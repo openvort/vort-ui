@@ -1,0 +1,129 @@
+name: Bug Report
+description: Report a bug in Vort UI
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug! Please fill out the information below to help us fix it.
+
+  - type: input
+    id: version
+    attributes:
+      label: Vort UI Version
+      placeholder: e.g. 1.0.4
+    validations:
+      required: true
+
+  - type: input
+    id: vue-version
+    attributes:
+      label: Vue Version
+      placeholder: e.g. 3.5.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which component is affected?
+      options:
+        - Alert
+        - Anchor
+        - AutoComplete
+        - Badge
+        - Button
+        - Card
+        - Cascader
+        - Checkbox
+        - ColorPicker
+        - ConfigProvider
+        - DatePicker
+        - Dialog
+        - Divider
+        - Drawer
+        - Dropdown
+        - Form
+        - Grid
+        - Image
+        - Input
+        - Menu
+        - Message
+        - Notification
+        - Pagination
+        - Popconfirm
+        - Popover
+        - Radio
+        - Scrollbar
+        - Segmented
+        - Select
+        - Skeleton
+        - Slider
+        - Spin
+        - Statistic
+        - Steps
+        - Switch
+        - Table
+        - Tabs
+        - Tag
+        - Textarea
+        - TimePicker
+        - Timeline
+        - Tooltip
+        - Upload
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser
+      placeholder: e.g. Chrome 120, Safari 17
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear description of what the bug is.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this issue?
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction Link
+      description: A minimal reproduction (StackBlitz, CodeSandbox, or GitHub repo)
+    validations:
+      required: false

@@ -1,0 +1,247 @@
+/**
+ * Demo 页面公共样式
+ * 用于 Vort UI 组件文档展示页面
+ */
+
+/* ===== 页面布局 ===== */
+.demo-page {
+    max-width: 100%;
+}
+
+.demo-page-header {
+    margin-bottom: 40px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--vort-border-secondary);
+}
+
+.demo-page-title {
+    margin: 0 0 12px;
+    font-size: 30px;
+    font-weight: 600;
+    color: var(--vort-text);
+}
+
+.demo-page-desc {
+    margin: 0;
+    font-size: 16px;
+    color: var(--vort-text-secondary);
+}
+
+/* ===== 章节样式 ===== */
+.demo-page-section {
+    margin-bottom: 48px;
+}
+
+.demo-section-title {
+    margin: 0 0 16px;
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--vort-text);
+}
+
+.demo-section-desc {
+    margin: 0 0 12px;
+    font-size: 14px;
+    color: var(--vort-text-secondary);
+    line-height: 1.6;
+}
+
+.demo-section-list {
+    margin: 0 0 24px;
+    padding-left: 20px;
+    font-size: 14px;
+    color: var(--vort-text-secondary);
+    line-height: 2;
+}
+
+.demo-subsection-title {
+    margin: 32px 0 16px;
+    padding-top: 24px;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--vort-text);
+    border-top: 1px solid var(--vort-border-secondary);
+}
+
+/* ===== API 文档样式 ===== */
+.demo-api-title {
+    margin: 24px 0 12px;
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--vort-text);
+}
+
+.demo-api-desc {
+    margin: 0 0 12px;
+    font-size: 14px;
+    color: var(--vort-text-secondary);
+}
+
+.demo-api-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    margin-bottom: 24px;
+}
+
+.demo-api-table th,
+.demo-api-table td {
+    padding: 12px 16px;
+    text-align: left;
+    border: 1px solid var(--vort-border-secondary);
+}
+
+.demo-api-table th {
+    background: var(--vort-border-secondary);
+    font-weight: 500;
+    color: var(--vort-text);
+}
+
+.demo-api-table td {
+    color: var(--vort-text-secondary);
+}
+
+.demo-api-table code {
+    padding: 2px 6px;
+    line-height: 2;
+    font-size: 13px;
+    background: rgba(0, 0, 0, 0.04);
+    border-radius: 4px;
+    font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+}
+
+/* ===== Demo 布局辅助类 ===== */
+
+/* 单行水平布局 */
+.demo-row {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+/* 垂直堆叠布局 */
+.demo-col {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* 输入框布局 - 限制最大宽度 */
+.demo-input-row {
+    display: flex;
+    gap: 16px;
+    max-width: 400px;
+}
+
+.demo-input-col {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 400px;
+}
+
+/* 文本域布局 - 稍宽的最大宽度 */
+.demo-textarea-row {
+    display: flex;
+    gap: 16px;
+    max-width: 500px;
+}
+
+.demo-textarea-col {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 500px;
+}
+
+/* 全宽布局 */
+.demo-full-width {
+    width: 100%;
+}
+
+/* 瀑布流布局（默认两列，仿 Ant Design 文档风格） */
+.demo-grid {
+    columns: 2;
+    column-gap: 16px;
+    --demo-box-margin: 16px; /* DemoBox 底部间距 */
+}
+
+/* 防止 DemoBox 被截断到不同列 */
+.demo-grid .demo-box {
+    break-inside: avoid;
+}
+
+/* 在瀑布流中占一整行 */
+.demo-grid-full,
+.demo-subsection-title,
+.demo-divider {
+    column-span: all;
+}
+
+/* 响应式：小屏幕单列 */
+@media (max-width: 1200px) {
+    .demo-grid {
+        columns: 1;
+    }
+}
+
+.demo-grid-1 {
+    columns: 1;
+}
+
+.demo-grid-2 {
+    columns: 2;
+}
+
+.demo-grid-3 {
+    columns: 3;
+}
+
+.demo-grid-4 {
+    columns: 4;
+}
+
+/* ===== 特殊场景样式 ===== */
+
+/* 背景容器（用于展示 ghost 按钮等） */
+.demo-dark-bg {
+    padding: 24px;
+    background: #bec8c8;
+    border-radius: 8px;
+}
+
+/* 滚动容器 */
+.demo-scroll-container {
+    height: 300px;
+    overflow: auto;
+    position: relative;
+    border: 1px solid var(--vort-border);
+    padding: 24px;
+    border-radius: 4px;
+}
+
+/* ===== 通用辅助样式 ===== */
+
+/* 结果展示文本 */
+.demo-result {
+    font-size: 14px;
+    color: var(--vort-text-secondary);
+}
+
+/* 分隔线 */
+.demo-divider {
+    border: none;
+    border-top: 1px solid var(--vort-border-secondary);
+    margin: 0;
+}
+
+/* 列表页演示区域 */
+.demo-list-container {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    background: #f5f5f5;
+    padding: 16px;
+    border-radius: 8px;
+}

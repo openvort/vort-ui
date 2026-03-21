@@ -1,0 +1,65 @@
+name: Feature Request
+description: Suggest a new feature or enhancement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting a feature! Please provide as much detail as possible.
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Request Type
+      options:
+        - New Component
+        - Enhancement to Existing Component
+        - New API / Prop
+        - Accessibility Improvement
+        - Performance Improvement
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: component
+    attributes:
+      label: Related Component (if applicable)
+      placeholder: e.g. Select, Table
+    validations:
+      required: false
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Description
+      description: What problem does this feature solve? What is your use case?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How would you like this to work? Include API design if possible.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Are there any alternative approaches you've considered?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: willing-to-pr
+    attributes:
+      label: Would you be willing to submit a PR?
+      options:
+        - "Yes"
+        - "Yes, with guidance"
+        - "No"
+    validations:
+      required: true
