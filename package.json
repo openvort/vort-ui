@@ -1,7 +1,7 @@
 {
   "name": "@openvort/vort-ui",
   "version": "1.0.4",
-  "description": "Vue 3 component library with Ant Design aesthetics and Element Plus-like API",
+  "description": "Vort UI - 融合 Ant Design 视觉与 Element Plus API 的 Vue 3 组件库",
   "license": "MIT",
   "private": false,
   "type": "module",

@@ -1,65 +1,65 @@
-name: Feature Request
-description: Suggest a new feature or enhancement
+name: 功能请求
+description: 提议新功能或改进
 labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thank you for suggesting a feature! Please provide as much detail as possible.
+        感谢你提出建议！请尽可能详细地描述你的需求。
 
   - type: dropdown
     id: type
     attributes:
-      label: Request Type
+      label: 请求类型
       options:
-        - New Component
-        - Enhancement to Existing Component
-        - New API / Prop
-        - Accessibility Improvement
-        - Performance Improvement
-        - Other
+        - 新组件
+        - 现有组件增强
+        - 新增 API / 属性
+        - 无障碍改进
+        - 性能优化
+        - 其他
     validations:
       required: true
 
   - type: input
     id: component
     attributes:
-      label: Related Component (if applicable)
-      placeholder: e.g. Select, Table
+      label: 相关组件（如有）
+      placeholder: 例如 Select、Table
     validations:
       required: false
 
   - type: textarea
     id: problem
     attributes:
-      label: Problem Description
-      description: What problem does this feature solve? What is your use case?
+      label: 需求描述
+      description: 这个功能解决什么问题？你的使用场景是什么？
     validations:
       required: true
 
   - type: textarea
     id: solution
     attributes:
-      label: Proposed Solution
-      description: How would you like this to work? Include API design if possible.
+      label: 建议方案
+      description: 你期望它如何工作？如有可能请附上 API 设计。
     validations:
       required: true
 
   - type: textarea
     id: alternatives
     attributes:
-      label: Alternatives Considered
-      description: Are there any alternative approaches you've considered?
+      label: 替代方案
+      description: 你是否考虑过其他实现方式？
     validations:
       required: false
 
   - type: dropdown
     id: willing-to-pr
     attributes:
-      label: Would you be willing to submit a PR?
+      label: 是否愿意提交 PR？
       options:
-        - "Yes"
-        - "Yes, with guidance"
-        - "No"
+        - 愿意
+        - 愿意，但需要指导
+        - 暂时不行
     validations:
       required: true

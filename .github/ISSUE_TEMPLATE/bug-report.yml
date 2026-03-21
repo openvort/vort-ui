@@ -1,102 +1,102 @@
-name: Bug Report
-description: Report a bug in Vort UI
+name: Bug 报告
+description: 报告 Vort UI 中的问题
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thank you for reporting a bug! Please fill out the information below to help us fix it.
+        感谢你提交 Bug 报告！请填写以下信息帮助我们定位和修复问题。
 
   - type: input
     id: version
     attributes:
-      label: Vort UI Version
-      placeholder: e.g. 1.0.4
+      label: Vort UI 版本
+      placeholder: 例如 1.0.4
     validations:
       required: true
 
   - type: input
     id: vue-version
     attributes:
-      label: Vue Version
-      placeholder: e.g. 3.5.0
+      label: Vue 版本
+      placeholder: 例如 3.5.0
     validations:
       required: true
 
   - type: dropdown
     id: component
     attributes:
-      label: Component
-      description: Which component is affected?
+      label: 相关组件
+      description: 哪个组件出了问题？
       options:
-        - Alert
-        - Anchor
-        - AutoComplete
-        - Badge
-        - Button
-        - Card
-        - Cascader
-        - Checkbox
-        - ColorPicker
-        - ConfigProvider
-        - DatePicker
-        - Dialog
-        - Divider
-        - Drawer
-        - Dropdown
-        - Form
-        - Grid
-        - Image
-        - Input
-        - Menu
-        - Message
-        - Notification
-        - Pagination
-        - Popconfirm
-        - Popover
-        - Radio
-        - Scrollbar
-        - Segmented
-        - Select
-        - Skeleton
-        - Slider
-        - Spin
-        - Statistic
-        - Steps
-        - Switch
-        - Table
-        - Tabs
-        - Tag
-        - Textarea
-        - TimePicker
-        - Timeline
-        - Tooltip
-        - Upload
-        - Other
+        - Alert 警告提示
+        - Anchor 锚点
+        - AutoComplete 自动补全
+        - Badge 徽标
+        - Button 按钮
+        - Card 卡片
+        - Cascader 级联选择
+        - Checkbox 复选框
+        - ColorPicker 颜色选择器
+        - ConfigProvider 全局配置
+        - DatePicker 日期选择器
+        - Dialog 对话框
+        - Divider 分割线
+        - Drawer 抽屉
+        - Dropdown 下拉菜单
+        - Form 表单
+        - Grid 栅格
+        - Image 图片
+        - Input 输入框
+        - Menu 导航菜单
+        - Message 消息提示
+        - Notification 通知
+        - Pagination 分页
+        - Popconfirm 气泡确认
+        - Popover 气泡卡片
+        - Radio 单选框
+        - Scrollbar 滚动条
+        - Segmented 分段控制器
+        - Select 选择器
+        - Skeleton 骨架屏
+        - Slider 滑动条
+        - Spin 加载中
+        - Statistic 统计数值
+        - Steps 步骤条
+        - Switch 开关
+        - Table 表格
+        - Tabs 标签页
+        - Tag 标签
+        - Textarea 文本域
+        - TimePicker 时间选择器
+        - Timeline 时间线
+        - Tooltip 文字提示
+        - Upload 上传
+        - 其他
     validations:
       required: true
 
   - type: input
     id: browser
     attributes:
-      label: Browser
-      placeholder: e.g. Chrome 120, Safari 17
+      label: 浏览器
+      placeholder: 例如 Chrome 120、Safari 17
     validations:
       required: false
 
   - type: textarea
     id: description
     attributes:
-      label: Bug Description
-      description: A clear description of what the bug is.
+      label: 问题描述
+      description: 清晰描述你遇到的问题。
     validations:
       required: true
 
   - type: textarea
     id: steps
     attributes:
-      label: Steps to Reproduce
-      description: How can we reproduce this issue?
+      label: 复现步骤
+      description: 如何复现这个问题？
       value: |
         1.
         2.
@@ -107,23 +107,23 @@ body:
   - type: textarea
     id: expected
     attributes:
-      label: Expected Behavior
-      description: What did you expect to happen?
+      label: 期望行为
+      description: 你期望发生什么？
     validations:
       required: true
 
   - type: textarea
     id: actual
     attributes:
-      label: Actual Behavior
-      description: What actually happened?
+      label: 实际行为
+      description: 实际发生了什么？
     validations:
       required: true
 
   - type: textarea
     id: reproduction
     attributes:
-      label: Reproduction Link
-      description: A minimal reproduction (StackBlitz, CodeSandbox, or GitHub repo)
+      label: 复现链接
+      description: 最小复现示例（StackBlitz、CodeSandbox 或 GitHub 仓库）
     validations:
       required: false

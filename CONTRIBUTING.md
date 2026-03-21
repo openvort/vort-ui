@@ -1,13 +1,13 @@
-# Contributing to Vort UI
+# 贡献指南
 
-Thank you for your interest in contributing to Vort UI! This guide will help you get started.
+感谢你对 Vort UI 的关注！本指南将帮助你快速上手参与贡献。
 
-## Prerequisites
+## 环境要求
 
 - [Node.js](https://nodejs.org/) >= 18
 - [pnpm](https://pnpm.io/) >= 8
 
-## Setup
+## 安装
 
 ```bash
 git clone https://github.com/openvort/vort-ui.git
@@ -15,108 +15,108 @@ cd vort-ui
 pnpm install
 ```
 
-## Development
+## 开发
 
 ```bash
-# Start the demo site with hot reload
+# 启动演示站（支持热更新）
 pnpm dev
 
-# Build the component library
+# 构建组件库
 pnpm build:lib
 
-# Build everything (library + demo site)
+# 构建全部（组件库 + 演示站）
 pnpm build
 
-# Run type checking
+# 类型检查
 pnpm type-check
 ```
 
-## Project Structure
+## 项目结构
 
 ```
 vort-ui/
 ├── src/
-│   ├── components/vort/     # Component source code
-│   │   ├── button/          # Each component has its own directory
+│   ├── components/vort/     # 组件源码
+│   │   ├── button/          # 每个组件独立目录
 │   │   ├── input/
-│   │   ├── styles/          # Global styles & CSS variables
-│   │   ├── composables/     # Shared composables
-│   │   ├── locale/          # i18n locale files
-│   │   ├── icons/           # Icon components
-│   │   └── index.ts         # Main entry point
-│   ├── lib/                 # Utility functions
-│   ├── views/demo/          # Demo pages
-│   └── router/              # Demo site routing
-├── scripts/                 # Build scripts
-├── vite.config.ts           # Demo site Vite config
-└── vite.config.lib.ts       # Library build Vite config
+│   │   ├── styles/          # 全局样式 & CSS 变量
+│   │   ├── composables/     # 公共组合式函数
+│   │   ├── locale/          # 国际化语言包
+│   │   ├── icons/           # 图标组件
+│   │   └── index.ts         # 主入口
+│   ├── lib/                 # 工具函数
+│   ├── views/demo/          # 演示页面
+│   └── router/              # 演示站路由
+├── scripts/                 # 构建脚本
+├── vite.config.ts           # 演示站 Vite 配置
+└── vite.config.lib.ts       # 组件库构建 Vite 配置
 ```
 
-## Submitting Issues
+## 提交 Issue
 
-Before creating an issue, please check if a similar issue already exists.
+提交前请先搜索是否已有类似的 Issue。
 
-### Bug Reports
+### Bug 报告
 
-When reporting a bug, please include:
+报告 Bug 时请包含以下信息：
 
-- Vort UI version
-- Vue version
-- Browser and version
-- Steps to reproduce
-- Expected behavior
-- Actual behavior
-- Code snippet or reproduction link (if possible)
+- Vort UI 版本
+- Vue 版本
+- 浏览器及版本
+- 复现步骤
+- 期望行为
+- 实际行为
+- 代码片段或复现链接（如有）
 
-### Feature Requests
+### 功能请求
 
-When requesting a feature, please include:
+请求新功能时请包含：
 
-- Use case description
-- Proposed API design (if applicable)
-- Whether you are willing to submit a PR
+- 使用场景描述
+- 建议的 API 设计（如有）
+- 是否愿意提交 PR
 
-## Submitting Pull Requests
+## 提交 Pull Request
 
-1. Fork the repository and create your branch from `main`
-2. Make your changes
-3. Ensure `pnpm type-check` passes
-4. Ensure `pnpm build:lib` succeeds
-5. Write a clear PR description explaining your changes
-6. Submit the pull request
+1. Fork 本仓库，从 `main` 创建你的分支
+2. 进行修改
+3. 确保 `pnpm type-check` 通过
+4. 确保 `pnpm build:lib` 成功
+5. 编写清晰的 PR 描述说明你的修改
+6. 提交 Pull Request
 
-### Commit Convention
+### Commit 规范
 
-We follow [Conventional Commits](https://www.conventionalcommits.org/):
+遵循 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/)：
 
 ```
-<type>(<scope>): <subject>
+<类型>(<范围>): <描述>
 ```
 
-**Types:**
-- `feat` - New feature or component
-- `fix` - Bug fix
-- `docs` - Documentation changes
-- `style` - Code style changes (formatting, no logic change)
-- `refactor` - Code refactoring
-- `perf` - Performance improvement
-- `test` - Adding or updating tests
-- `chore` - Build process or tooling changes
+**类型：**
+- `feat` — 新功能或新组件
+- `fix` — Bug 修复
+- `docs` — 文档变更
+- `style` — 代码风格调整（不影响逻辑）
+- `refactor` — 代码重构
+- `perf` — 性能优化
+- `test` — 测试相关
+- `chore` — 构建/工具相关
 
-**Examples:**
+**示例：**
 ```
-feat(select): add virtual scroll support
-fix(datepicker): correct month navigation in range mode
-docs: update installation guide
+feat(select): 添加虚拟滚动支持
+fix(datepicker): 修复范围模式下月份导航错误
+docs: 更新安装指南
 ```
 
-### Code Style
+### 代码规范
 
-- Use Vue 3 Composition API with `<script setup lang="ts">`
-- Provide complete TypeScript type definitions
-- Use Tailwind CSS for styling when possible
-- Follow the existing code patterns in the codebase
+- 使用 Vue 3 Composition API + `<script setup lang="ts">`
+- 提供完整的 TypeScript 类型定义
+- 优先使用 Tailwind CSS 编写样式
+- 遵循项目中已有的代码风格
 
-## License
+## 开源协议
 
-By contributing, you agree that your contributions will be licensed under the [MIT License](./LICENSE).
+参与贡献即表示你同意你的贡献将按 [MIT 协议](./LICENSE) 授权。

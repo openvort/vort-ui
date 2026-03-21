@@ -1,24 +1,24 @@
-## What does this PR do?
+## 这个 PR 做了什么？
 
-<!-- A brief description of the changes -->
+<!-- 简要描述修改内容 -->
 
-## Why is this change needed?
+## 为什么需要这个修改？
 
-<!-- Explain the motivation or link to a related issue -->
+<!-- 说明动机或关联 Issue -->
 
-Closes #<!-- issue number -->
+关联 #<!-- Issue 编号 -->
 
-## How to test
+## 如何测试
 
-<!-- Steps to verify the changes work correctly -->
+<!-- 验证修改的步骤 -->
 
 1.
 2.
 3.
 
-## Checklist
+## 自查清单
 
-- [ ] `pnpm type-check` passes
-- [ ] `pnpm build:lib` succeeds
-- [ ] Changes are backward compatible (or breaking changes are documented)
-- [ ] Component API is consistent with existing patterns
+- [ ] `pnpm type-check` 通过
+- [ ] `pnpm build:lib` 成功
+- [ ] 修改向后兼容（或已记录破坏性变更）
+- [ ] 组件 API 与现有风格一致
