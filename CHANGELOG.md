@@ -4,6 +4,11 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.1.1] - 2026-03-27
+
+### 新增
+- 导出内置图标组件（44 个），支持 `import { SearchOutlined, LoadingOutlined, ... } from "@openvort/vort-ui"`
+
 ## [1.1.0] - 2026-03-27
 
 ### 新增

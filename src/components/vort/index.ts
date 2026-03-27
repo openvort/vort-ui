@@ -4,6 +4,9 @@ import "./styles/index.css";
 // 国际化
 export * from "./locale";
 
+// 图标
+export * from "./icons";
+
 // UI 组件统一导出
 export * from "./config-provider";
 export * from "./anchor";
