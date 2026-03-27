@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@openvort/vort-ui"><img src="https://img.shields.io/npm/v/@openvort/vort-ui?color=1677ff" alt="npm version"></a>
-  <a href="https://github.com/openvort/vort-ui/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/@openvort/vort-ui" alt="license"></a>
+  <a href="https://github.com/openvort/vort-ui/blob/master/LICENSE"><img src="https://img.shields.io/npm/l/@openvort/vort-ui" alt="license"></a>
   <a href="https://github.com/openvort/vort-ui/actions/workflows/ci.yml"><img src="https://github.com/openvort/vort-ui/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/vue-3.4+-42b883" alt="vue">
   <img src="https://img.shields.io/badge/typescript-%E2%9C%93-3178c6" alt="typescript">
