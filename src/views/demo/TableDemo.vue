@@ -646,6 +646,7 @@ const refreshChildren = (parentId) => {
         ref="tableRef"
         :data-source="treeData"
         :load-children="loadTreeChildren"
+        :tree="true"
         :pagination="false"
         row-key="id"
     >
@@ -657,10 +658,13 @@ const refreshChildren = (parentId) => {
             </template>
         </vort-table-column>
     </vort-table>
-</template>`;
+</template>
+
+<!-- 如需关闭树形展示，即使数据里有 children / hasChildren，也可以显式传 :tree="false" -->`;
 
 // 树形表格 Props
 const treePropsData = [
+    { prop: "tree", desc: "是否启用树形结构；不传时自动根据数据和 loadChildren 推断", type: "boolean", default: "自动推断" },
     {
         prop: "treeProps",
         desc: "树形结构配置",
@@ -1035,10 +1039,10 @@ const columns = [
                 <!-- 树形表格 -->
                 <DemoBox
                     title="树形表格（懒加载）"
-                    description="通过设置 loadChildren 属性实现树形数据的懒加载展开。点击展开图标会调用 loadChildren 方法加载子节点。适用于层级较深或数据量大的树形数据展示。"
+                    description="通过设置 loadChildren 属性实现树形数据的懒加载展开。点击展开图标会调用 loadChildren 方法加载子节点。适用于层级较深或数据量大的树形数据展示；也可以通过 tree 参数手动开启或关闭树形模式。"
                     :code="treeTableCode"
                 >
-                    <vort-table ref="treeTableRef" :data-source="treeData" :load-children="loadTreeChildren" :pagination="false" row-key="id">
+                    <vort-table ref="treeTableRef" :data-source="treeData" :load-children="loadTreeChildren" :tree="true" :pagination="false" row-key="id">
                         <vort-table-column prop="name" label="名称" :width="280" />
                         <vort-table-column prop="description" label="描述" />
                         <vort-table-column label="操作" :width="150">

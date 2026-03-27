@@ -88,8 +88,11 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { CloseCircleFilled, CloseOutlined, DownOutlined, RightOutlined } from "@/components/vort/icons";
 import { Checkbox } from "@/components/vort/checkbox";
 import { getVortPopupContainer, useZIndex } from "@/components/vort/composables";
+import { useLocale } from "@/components/vort/locale/useLocale";
 
 defineOptions({ name: "VortCascader" });
+
+const { t: casT } = useLocale("Cascader");
 
 // 使用 z-index 上下文，在 Dialog/Drawer 内时自动获得更高的层级
 const zIndex = useZIndex("popup");
@@ -99,7 +102,7 @@ const zIndex = useZIndex("popup");
 const props = withDefaults(defineProps<Props>(), {
     modelValue: undefined,
     options: () => [],
-    placeholder: "请选择",
+    placeholder: undefined,
     size: "middle",
     disabled: false,
     status: undefined,
@@ -108,7 +111,7 @@ const props = withDefaults(defineProps<Props>(), {
     allowClear: false,
     expandTrigger: "click",
     autoClearSearchValue: true,
-    notFoundContent: "暂无数据",
+    notFoundContent: undefined,
     listHeight: 180,
     changeOnSelect: false,
     fieldNames: () => ({ label: "label", value: "value", children: "children" }),
@@ -118,6 +121,9 @@ const props = withDefaults(defineProps<Props>(), {
     showCheckedStrategy: "SHOW_CHILD",
     destroyPopupOnHide: false
 });
+
+const placeholder = computed(() => props.placeholder ?? casT("placeholder"));
+const notFoundContent = computed(() => props.notFoundContent ?? casT("no_data"));
 
 const emit = defineEmits<{
     "update:modelValue": [value: CascaderValue | CascaderMultipleValue | undefined];
@@ -459,6 +465,8 @@ const showClearButton = computed(() => {
     }
     return !!displayText.value;
 });
+
+const isClearButtonVisible = computed(() => showClearButton.value && isHovered.value);
 
 // 获取某一级的选项列表
 const getColumnsOptions = computed(() => {
@@ -1092,14 +1100,21 @@ defineExpose({
 
             <!-- 后缀区域 -->
             <span class="vort-cascader-suffix">
-                <!-- 清除按钮 -->
-                <span v-if="showClearButton && isHovered" class="vort-cascader-clear" @click="handleClear" @mousedown.prevent>
-                    <CloseCircleFilled />
-                </span>
+                <span class="vort-cascader-indicator">
+                    <!-- 清除按钮 -->
+                    <span
+                        class="vort-cascader-clear"
+                        :class="{ 'vort-cascader-clear-visible': isClearButtonVisible }"
+                        @click="handleClear"
+                        @mousedown.prevent
+                    >
+                        <CloseCircleFilled />
+                    </span>
 
-                <!-- 下拉箭头 -->
-                <span v-else class="vort-cascader-arrow-wrapper">
-                    <DownOutlined :class="['vort-cascader-arrow', isOpen && 'vort-cascader-arrow-open']" />
+                    <!-- 下拉箭头 -->
+                    <span class="vort-cascader-arrow-wrapper" :class="{ 'vort-cascader-arrow-wrapper-hidden': isClearButtonVisible }">
+                        <DownOutlined :class="['vort-cascader-arrow', isOpen && 'vort-cascader-arrow-open']" />
+                    </span>
                 </span>
             </span>
         </div>
@@ -1390,13 +1405,37 @@ defineExpose({
     gap: 4px;
 }
 
+.vort-cascader-indicator {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
+
 .vort-cascader-clear {
+    position: absolute;
+    inset: 0;
     display: flex;
     align-items: center;
+    justify-content: center;
     font-size: 14px;
     color: var(--vort-text-quaternary, rgba(0, 0, 0, 0.25));
     cursor: pointer;
-    transition: color var(--vort-transition-colors, 0.1s);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+        color var(--vort-transition-colors, 0.1s),
+        opacity var(--vort-transition-colors, 0.1s);
+}
+
+.vort-cascader-clear-visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
 }
 
 .vort-cascader-clear:hover {
@@ -1404,8 +1443,18 @@ defineExpose({
 }
 
 .vort-cascader-arrow-wrapper {
+    position: absolute;
+    inset: 0;
     display: flex;
     align-items: center;
+    justify-content: center;
+    transition: opacity var(--vort-transition-colors, 0.1s);
+}
+
+.vort-cascader-arrow-wrapper-hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
 }
 
 .vort-cascader-arrow {

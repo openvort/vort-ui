@@ -22,6 +22,8 @@ export interface SwitchProps {
     checkedValue?: SwitchValue;
     /** 非选中时对应的值（启用值映射模式） */
     uncheckedValue?: SwitchValue;
+    /** 非选中时对应的值（兼容命名） */
+    unCheckedValue?: SwitchValue;
     /** 选中时的内容 */
     checkedChildren?: string;
     /** 非选中时的内容 */

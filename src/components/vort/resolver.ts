@@ -168,6 +168,13 @@ const componentMap: Record<string, { from: string; name: string }> = {
     // Segmented
     VortSegmented: { from: "@/components/vort/segmented", name: "Segmented" },
 
+    // Menu
+    VortMenu: { from: "@/components/vort/menu", name: "Menu" },
+    VortMenuItem: { from: "@/components/vort/menu", name: "MenuItem" },
+    VortSubMenu: { from: "@/components/vort/menu", name: "SubMenu" },
+    VortMenuItemGroup: { from: "@/components/vort/menu", name: "MenuItemGroup" },
+    VortMenuDivider: { from: "@/components/vort/menu", name: "MenuDivider" },
+
     // =====================
     // 业务 UI 库 (vort-biz/)
     // =====================

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, useAttrs } from "vue";
+import type { PropType } from "vue";
 import { LoadingOutlined } from "@/components/vort/icons";
 import type { SwitchSize, SwitchValue } from "./types";
 
@@ -7,29 +8,62 @@ defineOptions({ name: "VortSwitch", inheritAttrs: false });
 
 /** Vort Switch - 开关组件 */
 
-interface Props {
+const props = defineProps({
     /** 指定当前值（v-model:checked），支持 boolean / number / string */
-    checked?: SwitchValue;
+    checked: {
+        type: [Boolean, Number, String] as PropType<SwitchValue>,
+        default: undefined
+    },
     /** 是否禁用 */
-    disabled?: boolean;
+    disabled: {
+        type: Boolean,
+        default: false
+    },
     /** 加载中 */
-    loading?: boolean;
+    loading: {
+        type: Boolean,
+        default: false
+    },
     /** 开关大小 */
-    size?: SwitchSize;
+    size: {
+        type: String as PropType<SwitchSize>,
+        default: "default"
+    },
+    /** 选中时对应的值 */
+    checkedValue: {
+        type: [Boolean, Number, String] as PropType<SwitchValue>,
+        default: undefined
+    },
+    /** 非选中时对应的值（推荐） */
+    uncheckedValue: {
+        type: [Boolean, Number, String] as PropType<SwitchValue>,
+        default: undefined
+    },
+    /** 非选中时对应的值（兼容命名） */
+    unCheckedValue: {
+        type: [Boolean, Number, String] as PropType<SwitchValue>,
+        default: undefined
+    },
     /** 选中时的内容 */
-    checkedChildren?: string;
+    checkedChildren: {
+        type: String,
+        default: undefined
+    },
     /** 非选中时的内容（模板写法：un-checked-children） */
-    unCheckedChildren?: string;
+    unCheckedChildren: {
+        type: String,
+        default: undefined
+    },
     /** 自定义类名 */
-    class?: string;
+    class: {
+        type: String,
+        default: undefined
+    },
     /** 切换前的钩子，返回 false 或 Promise reject 会阻止切换 */
-    beforeChange?: () => Promise<boolean> | boolean;
-}
-
-const props = withDefaults(defineProps<Props>(), {
-    disabled: false,
-    loading: false,
-    size: "default"
+    beforeChange: {
+        type: Function as PropType<() => Promise<boolean> | boolean>,
+        default: undefined
+    }
 });
 
 const emit = defineEmits<{
@@ -41,24 +75,13 @@ const emit = defineEmits<{
 
 const isLoading = ref(false);
 
-// ==================== 值映射（通过 $attrs 读取，避免 prop 名称冲突） ====================
+// ==================== 值映射 ====================
 
 const attrs = useAttrs();
 
-/**
- * 值映射支持：通过 $attrs 获取 checkedValue / uncheckedValue
- * 不放入 Props 接口，避免与 checked 产生 Vue prop 归一化冲突
- *
- * 支持的模板写法：
- *   :checked-value="1"       → attrs.checkedValue
- *   :un-checked-value="0"    → attrs.unCheckedValue
- *   :unchecked-value="0"     → attrs.uncheckedValue
- */
-const checkedValueAttr = computed<SwitchValue | undefined>(() => attrs.checkedValue as SwitchValue | undefined);
-const uncheckedValueAttr = computed<SwitchValue | undefined>(() => (attrs.unCheckedValue ?? attrs.uncheckedValue) as SwitchValue | undefined);
-const useValueMapping = computed(() => checkedValueAttr.value !== undefined || uncheckedValueAttr.value !== undefined);
-const resolvedCheckedValue = computed<SwitchValue>(() => checkedValueAttr.value ?? true);
-const resolvedUncheckedValue = computed<SwitchValue>(() => uncheckedValueAttr.value ?? false);
+const useValueMapping = computed(() => props.checkedValue !== undefined || props.uncheckedValue !== undefined || props.unCheckedValue !== undefined);
+const resolvedCheckedValue = computed<SwitchValue>(() => props.checkedValue ?? true);
+const resolvedUncheckedValue = computed<SwitchValue>(() => props.uncheckedValue ?? props.unCheckedValue ?? false);
 
 // ==================== 计算属性 ====================
 
@@ -70,8 +93,11 @@ const isChecked = computed(() => {
     return Boolean(props.checked);
 });
 
-/** 是否实际禁用（禁用或加载中都不可点击） */
-const isActuallyDisabled = computed(() => props.disabled || props.loading || isLoading.value);
+/** 是否阻断交互（外部 loading 只阻断交互，不直接设置原生 disabled） */
+const isInteractionBlocked = computed(() => props.disabled || props.loading || isLoading.value);
+
+/** 是否使用原生 disabled（仅在真正禁用或内部切换中使用） */
+const isActuallyDisabled = computed(() => props.disabled || isLoading.value);
 
 /** 实际显示的加载状态 */
 const showLoading = computed(() => props.loading || isLoading.value);
@@ -81,7 +107,7 @@ const showLoading = computed(() => props.loading || isLoading.value);
 const switchClasses = computed(() => {
     const classes = ["vort-switch"];
     if (isChecked.value) classes.push("vort-switch-checked");
-    if (isActuallyDisabled.value) classes.push("vort-switch-disabled");
+    if (isInteractionBlocked.value) classes.push("vort-switch-disabled");
     if (props.size === "small") classes.push("vort-switch-small");
     if (props.class) classes.push(props.class);
     return classes;
@@ -123,7 +149,7 @@ const doSwitch = async (event: MouseEvent | KeyboardEvent): Promise<void> => {
 
 /** 处理点击 */
 const handleClick = (event: MouseEvent) => {
-    if (isActuallyDisabled.value) return;
+    if (isInteractionBlocked.value) return;
     doSwitch(event);
 };
 
@@ -131,32 +157,21 @@ const handleClick = (event: MouseEvent) => {
 const handleKeydown = (event: KeyboardEvent) => {
     if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        if (!isActuallyDisabled.value) {
+        if (!isInteractionBlocked.value) {
             doSwitch(event);
         }
     }
 };
 
-/** 过滤掉值映射相关的 attrs，其余透传到根元素 */
-const VALUE_MAPPING_KEYS = new Set(["checkedValue", "checked-value", "unCheckedValue", "un-checked-value", "uncheckedValue", "unchecked-value"]);
-const filteredAttrs = computed(() => {
-    const result: Record<string, unknown> = {};
-    for (const [key, val] of Object.entries(attrs)) {
-        if (!VALUE_MAPPING_KEYS.has(key)) {
-            result[key] = val;
-        }
-    }
-    return result;
-});
 </script>
 
 <template>
     <button
         type="button"
         role="switch"
-        v-bind="filteredAttrs"
+        v-bind="attrs"
         :aria-checked="isChecked"
-        :aria-disabled="isActuallyDisabled"
+        :aria-disabled="isInteractionBlocked"
         :class="switchClasses"
         :disabled="isActuallyDisabled"
         @click="handleClick"

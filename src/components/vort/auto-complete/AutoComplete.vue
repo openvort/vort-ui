@@ -2,12 +2,14 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from "vue";
 import { Input } from "@/components/vort/input";
 import { getVortPopupContainer, useZIndex } from "@/components/vort/composables";
+import { useLocale } from "@/components/vort/locale/useLocale";
 
 defineOptions({ name: "VortAutoComplete" });
 
+const { t: acT } = useLocale("AutoComplete");
+
 // 使用 z-index 上下文，在 Dialog/Drawer 内时自动获得更高的层级
 const zIndex = useZIndex("popup");
-const popupContainer = computed(() => getVortPopupContainer());
 
 /** Vort AutoComplete - 自动完成组件 */
 
@@ -62,13 +64,15 @@ interface Props {
     open?: boolean;
     /** 默认是否打开下拉菜单 */
     defaultOpen?: boolean;
+    /** 菜单渲染父节点。默认渲染到 body 上，如果你遇到菜单滚动定位问题，试试修改为滚动的区域，并相对其定位 */
+    getPopupContainer?: () => HTMLElement;
 }
 
 const props = withDefaults(defineProps<Props>(), {
     modelValue: undefined,
     defaultValue: "",
     options: () => [],
-    placeholder: "请输入",
+    placeholder: undefined,
     size: "middle",
     disabled: false,
     bordered: true,
@@ -83,6 +87,9 @@ const props = withDefaults(defineProps<Props>(), {
     open: undefined,
     defaultOpen: false
 });
+
+const popupContainer = computed(() => props.getPopupContainer?.() ?? getVortPopupContainer());
+const resolvedPlaceholder = computed(() => props.placeholder ?? acT("placeholder"));
 
 const emit = defineEmits<{
     "update:modelValue": [value: string];
@@ -455,7 +462,7 @@ defineExpose({
         <Input
             ref="inputRef"
             :model-value="innerValue"
-            :placeholder="placeholder"
+            :placeholder="resolvedPlaceholder"
             :size="size"
             :status="status"
             :disabled="disabled"
@@ -510,7 +517,7 @@ defineExpose({
                         <!-- 空状态 -->
                         <div v-else-if="showEmpty" class="vort-auto-complete-empty">
                             <slot name="notFoundContent">
-                                {{ notFoundContent ?? "无匹配结果" }}
+                                {{ notFoundContent ?? acT("no_match") }}
                             </slot>
                         </div>
                     </div>

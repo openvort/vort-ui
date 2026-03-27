@@ -86,6 +86,7 @@ const toggleCode = () => {
 .demo-box-desc {
     margin: 4px 0 0;
     font-size: 13px;
+    line-height: 1.8;
     color: var(--vort-text-secondary);
 }
 

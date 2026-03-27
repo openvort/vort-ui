@@ -4,6 +4,28 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.1.0] - 2026-03-27
+
+### 新增
+- 新增 `useOverlayStack` 组合函数，统一管理弹出层 z-index 层级
+- 新增 Menu 组件系列映射（VortMenu / VortMenuItem / VortSubMenu / VortMenuItemGroup / VortMenuDivider）
+- 新增 5 个图标组件：MaximizeOutlined、RotateCcwOutlined、RotateCwOutlined、ZoomInOutlined、ZoomOutOutlined
+- 新增 ImagePreviewGroup 组件类型定义
+- Button 类型定义外置为独立 types.ts，支持外部引用
+- 多组件新增国际化支持（Alert、AutoComplete、Cascader、DatePicker、Dialog 等）
+- Locale 类型扩展，新增多个组件的 i18n 键定义
+
+### 重构
+- Select 组件完全重写：从 10 个子文件合并为高性能单文件实现
+- Dropdown 组件重构：整体重写，集成动态 z-index 管理
+- DropdownMenuSub 重构：改用 Vort 组件库内置图标
+- Cascader 清除按钮改为 indicator 模式，与 Select 行为一致
+- 移除多组件中的冗余注释，优化代码可读性
+
+### 修复
+- 修复 Dropdown 组件 watch 中 updatePosition 暂时性死区（TDZ）导致的运行时错误
+- 修复多个组件 placeholder/notFoundContent 硬编码问题，改为国际化方案
+
 ## [1.0.4] - 2026-03-05
 
 ### 新增

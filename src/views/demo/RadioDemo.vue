@@ -11,6 +11,9 @@ const solidValue = ref("a");
 const plainValue = ref("a");
 const optionsValue = ref("Apple");
 const buttonOptionsValue = ref("Apple");
+const changeValue = ref("a");
+const lastChangeEventType = ref("");
+const changeTriggerCount = ref(0);
 
 // Options 配置
 const plainOptions = ["Apple", "Pear", "Orange"];
@@ -159,6 +162,28 @@ const optionsWithDisabled = [
   <vort-radio-group v-model="value" :options="plainOptions" option-type="button" button-style="solid" />
 </template>`;
 
+const changeCode = `<script setup>
+import { ref } from 'vue';
+
+const value = ref('a');
+const lastChangeEventType = ref('');
+
+const handleChange = (event: Event) => {
+  lastChangeEventType.value = event.type;
+};
+<\/script>
+
+<template>
+  <vort-radio-group v-model="value" @change="handleChange">
+    <vort-radio value="a">A</vort-radio>
+    <vort-radio value="b">B</vort-radio>
+    <vort-radio value="c">C</vort-radio>
+  </vort-radio-group>
+
+  <p>当前选中值：{{ value }}</p>
+  <p>最近一次事件类型：{{ lastChangeEventType }}</p>
+</template>`;
+
 // Props 表格数据
 const radioPropsData = [
     { prop: "value", desc: "根据 value 进行比较，判断是否选中", type: "string | number", default: "-" },
@@ -181,8 +206,13 @@ const radioEventsData = [{ event: "change", desc: "选项变化时的回调函�
 
 const radioGroupEventsData = [
     { event: "update:modelValue", desc: "选中项变化时触发（v-model）", params: "(value: string | number) => void" },
-    { event: "change", desc: "选项变化时的回调函数", params: "(event: Event, value: string | number) => void" }
+    { event: "change", desc: "选中项变化时触发，如需最新值请直接读取 v-model", params: "(event: Event) => void" }
 ];
+
+const handleGroupChange = (event: Event) => {
+    lastChangeEventType.value = event.type;
+    changeTriggerCount.value += 1;
+};
 </script>
 
 <template>
@@ -308,6 +338,23 @@ const radioGroupEventsData = [
                         <vort-radio-group v-model="optionsValue" :options="optionsWithDisabled" />
                         <vort-radio-group v-model="buttonOptionsValue" :options="plainOptions" option-type="button" />
                         <vort-radio-group v-model="buttonOptionsValue" :options="plainOptions" option-type="button" button-style="solid" />
+                    </div>
+                </DemoBox>
+
+                <DemoBox
+                    title="Change 事件"
+                    description="`change` 当前用于通知交互事件本身；最新选中值请直接通过 `v-model` 读取。"
+                    :code="changeCode"
+                >
+                    <div class="demo-col">
+                        <vort-radio-group v-model="changeValue" @change="handleGroupChange">
+                            <vort-radio value="a">A</vort-radio>
+                            <vort-radio value="b">B</vort-radio>
+                            <vort-radio value="c">C</vort-radio>
+                        </vort-radio-group>
+                        <p class="demo-result">当前选中: {{ changeValue }}</p>
+                        <p class="demo-result">最近一次事件类型: {{ lastChangeEventType || "-" }}</p>
+                        <p class="demo-result">change 触发次数: {{ changeTriggerCount }}</p>
                     </div>
                 </DemoBox>
             </div>
