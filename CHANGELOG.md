@@ -4,6 +4,15 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [未发布]
+
+### 新增
+- Image 新增 `loading`、`decoding`、`fetchpriority` 三个 Props，分别透传到内部 `img` 的原生同名属性，业务方可以直接使用浏览器原生的懒加载与加载优先级能力
+
+### 修复
+- 修复 Image 在 `loading="lazy"` 下图片永不显示的问题：此前内部 `img` 带 `v-show="!loading && !error"`，加载期间为 `display: none`，而 `display: none` 的图片不会进入视口判定，原生懒加载因此永不发起请求、`load` 事件永不触发，形成死锁。现在 lazy 模式下加载中保持 `img` 可见，只按 `error` 隐藏
+- 修复 Image 文档站 API 表格中 `placeholder` 默认值标注错误（实际为 `false`，文档写为 `true`）
+
 ## [1.3.0] - 2026-04-24
 
 ### 新增

@@ -45,6 +45,12 @@ interface Props {
     placeholder?: boolean;
     /** 点击遮罩是否可关闭预览 */
     maskClosable?: boolean;
+    /** 图片懒加载方式，对应原生 img 的 loading 属性 */
+    loading?: "eager" | "lazy";
+    /** 图片解码方式，对应原生 img 的 decoding 属性 */
+    decoding?: "sync" | "async" | "auto";
+    /** 加载优先级，对应原生 img 的 fetchpriority 属性 */
+    fetchpriority?: "high" | "low" | "auto";
     /** 自定义类名 */
     class?: string;
     /** 自定义样式 */
@@ -70,7 +76,8 @@ const emit = defineEmits<{
 }>();
 
 // 状态
-const loading = ref(true);
+// 注意：内部加载态命名为 isLoading，避免与 loading（原生属性 prop）重名
+const isLoading = ref(true);
 const error = ref(false);
 const fallbackLoading = ref(false);
 const fallbackError = ref(false);
@@ -239,14 +246,14 @@ const previewImageStyle = computed(() => {
 
 // 图片加载完成
 const handleLoad = (e: Event) => {
-    loading.value = false;
+    isLoading.value = false;
     error.value = false;
     emit("load", e);
 };
 
 // 图片加载失败
 const handleError = (e: Event) => {
-    loading.value = false;
+    isLoading.value = false;
     error.value = true;
     // 如果有 fallback，开始加载 fallback
     if (props.fallback) {
@@ -496,18 +503,24 @@ onUnmounted(() => {
 <template>
     <div :class="['vort-image', props.class]" :style="imageStyle">
         <!-- 加载中占位 -->
-        <div v-if="(loading || fallbackLoading) && placeholder" class="vort-image-placeholder">
+        <div v-if="(isLoading || fallbackLoading) && placeholder" class="vort-image-placeholder">
             <ImageOutlined class="vort-image-placeholder-icon" />
         </div>
 
         <!-- 主图片 -->
+        <!-- lazy 模式下加载中不能隐藏 img：display:none 会让 IntersectionObserver 永不判定入视口，
+             原生 loading="lazy" 因此永不触发，onLoad 也不会执行，形成死锁。
+             因此 lazy 模式只按 error 隐藏，其余情况（含加载中）都保持可见 -->
         <img
             ref="imageRef"
-            v-show="!loading && !error"
+            v-show="(loading === 'lazy' || !isLoading) && !error"
             :class="['vort-image-img', { 'vort-image-img-preview': isPreviewEnabled }]"
             :style="{ objectFit: fit, width: '100%', height: '100%', maxWidth: 'none' }"
             :src="src"
             :alt="alt"
+            :loading="loading"
+            :decoding="decoding"
+            :fetchpriority="fetchpriority"
             @load="handleLoad"
             @error="handleError"
             @click="openPreview"
@@ -516,11 +529,14 @@ onUnmounted(() => {
         <!-- Fallback 图片 -->
         <img
             v-if="error && fallback"
-            v-show="!fallbackLoading && !fallbackError"
+            v-show="(loading === 'lazy' || !fallbackLoading) && !fallbackError"
             :class="['vort-image-img', { 'vort-image-img-preview': isPreviewEnabled }]"
             :style="{ objectFit: fit, width: '100%', height: '100%', maxWidth: 'none' }"
             :src="fallback"
             :alt="alt"
+            :loading="loading"
+            :decoding="decoding"
+            :fetchpriority="fetchpriority"
             @load="handleFallbackLoad"
             @error="handleFallbackError"
             @click="openPreview"

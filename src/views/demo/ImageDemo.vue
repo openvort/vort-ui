@@ -48,6 +48,27 @@ const fallbackCode = `<template>
   />
 </template>`;
 
+const priorityCode = `<template>
+  <!-- 首屏 / LCP 图片：提前加载，提高优先级 -->
+  <vort-image
+    src="https://example.com/hero.jpg"
+    alt="首屏图片"
+    loading="eager"
+    fetchpriority="high"
+    :width="400"
+    :height="300"
+  />
+
+  <!-- 视口外的图片：进入视口附近才发起请求 -->
+  <vort-image
+    src="https://example.com/list.jpg"
+    alt="列表图片"
+    loading="lazy"
+    :width="200"
+    :height="200"
+  />
+</template>`;
+
 const multipleCode = `<template>
   <!-- 使用 ImagePreviewGroup 包裹，支持预览时左右切换 -->
   <vort-image-preview-group>
@@ -114,7 +135,25 @@ const propsData = [
         prop: "placeholder",
         desc: "是否显示加载占位",
         type: "boolean",
-        default: "true"
+        default: "false"
+    },
+    {
+        prop: "loading",
+        desc: "懒加载方式，透传到内部 img 的原生 loading 属性",
+        type: '"eager" | "lazy"',
+        default: "-"
+    },
+    {
+        prop: "decoding",
+        desc: "解码方式，透传到内部 img 的原生 decoding 属性",
+        type: '"sync" | "async" | "auto"',
+        default: "-"
+    },
+    {
+        prop: "fetchpriority",
+        desc: "加载优先级，透传到内部 img 的原生 fetchpriority 属性",
+        type: '"high" | "low" | "auto"',
+        default: "-"
     },
     {
         prop: "maskClosable",
@@ -207,6 +246,36 @@ const operationsData = [
                         <div class="demo-image-item">
                             <p class="demo-image-label">加载失败（错误占位）</p>
                             <vort-image :src="sampleImages.broken" alt="加载失败" :width="150" :height="150" />
+                        </div>
+                    </div>
+                </DemoBox>
+
+                <DemoBox
+                    title="加载优先级"
+                    description="loading / decoding / fetchpriority 会透传到内部 img 标签，直接使用浏览器原生能力。首屏或 LCP 图片建议 loading=eager 配合 fetchpriority=high；视口外的图片用 loading=lazy。"
+                    :code="priorityCode"
+                >
+                    <div class="demo-image-row">
+                        <div class="demo-image-item">
+                            <p class="demo-image-label">高优先级（首屏）</p>
+                            <vort-image
+                                :src="sampleImages.square"
+                                alt="高优先级图片"
+                                loading="eager"
+                                fetchpriority="high"
+                                :width="150"
+                                :height="150"
+                            />
+                        </div>
+                        <div class="demo-image-item">
+                            <p class="demo-image-label">懒加载</p>
+                            <vort-image
+                                :src="sampleImages.portrait"
+                                alt="懒加载图片"
+                                loading="lazy"
+                                :width="150"
+                                :height="150"
+                            />
                         </div>
                     </div>
                 </DemoBox>
