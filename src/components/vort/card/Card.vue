@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, useSlots } from "vue";
+import { computed, provide, ref, useSlots } from "vue";
+import { cardExtraTargetKey } from "./types";
 
 defineOptions({ name: "VortCard" });
 
@@ -33,6 +34,10 @@ const showHead = computed(() => {
     return props.title || slots.title || slots.extra;
 });
 
+// 标题行右侧容器常驻，暴露给子组件 Teleport（见 types.ts）
+const extraRef = ref<HTMLElement | null>(null);
+provide(cardExtraTargetKey, extraRef);
+
 // ========== 类名计算 ==========
 
 const cardClasses = computed(() => {
@@ -65,7 +70,7 @@ const bodyClasses = computed(() => {
                     <slot name="title">{{ title }}</slot>
                     <span v-if="desc" class="vort-card-head-desc">{{ desc }}</span>
                 </div>
-                <div v-if="$slots.extra" class="vort-card-extra">
+                <div ref="extraRef" class="vort-card-extra">
                     <slot name="extra" />
                 </div>
             </div>

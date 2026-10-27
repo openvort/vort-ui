@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import { CloseOutlined } from "@/components/vort/icons";
+import { computed, type HTMLAttributes } from "vue";
+import { CloseOutlined } from "../icons";
 
 defineOptions({ name: "VortTag" });
 
@@ -28,7 +28,7 @@ interface Props {
     /** 尺寸 */
     size?: "small" | "default";
     /** 自定义类名 */
-    class?: string;
+    class?: HTMLAttributes["class"];
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -83,7 +83,8 @@ const tagClasses = computed(() => {
     const classes: string[] = ["vort-tag"];
 
     // 尺寸
-    classes.push(props.size === "small" ? "vort-tag-small" : "vort-tag-default");
+    // 尺寸类名带 size- 前缀，避免与 color="default" 的状态色类名 .vort-tag-default 撞名
+    classes.push(props.size === "small" ? "vort-tag-size-small" : "vort-tag-size-default");
 
     // 边框
     if (!props.bordered) classes.push("vort-tag-borderless");
@@ -191,14 +192,14 @@ const handleClose = (e: MouseEvent) => {
 /* ========================================
    尺寸
    ======================================== */
-.vort-tag-default {
+.vort-tag-size-default {
     gap: 4px;
     padding: 0 7px;
     font-size: 12px;
     line-height: 20px;
 }
 
-.vort-tag-small {
+.vort-tag-size-small {
     gap: 2px;
     padding: 0 4px;
     font-size: 12px;
@@ -214,8 +215,10 @@ const handleClose = (e: MouseEvent) => {
 
 /* ========================================
    简易样式（透明背景）
+   plain / white 与预设色叠用时要盖掉预设色的底色，预设色规则写在后面，这里用
+   双类名抬高优先级
    ======================================== */
-.vort-tag-plain {
+.vort-tag.vort-tag-plain {
     --_tag-bg: transparent;
     --_tag-border: currentColor;
 }
@@ -223,7 +226,7 @@ const handleClose = (e: MouseEvent) => {
 /* ========================================
    白色背景
    ======================================== */
-.vort-tag-white {
+.vort-tag.vort-tag-white {
     --_tag-bg: #fff;
     --_tag-border: currentColor;
 }

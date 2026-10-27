@@ -1,6 +1,6 @@
 import { createApp, ref, h, type App, type ComponentPublicInstance } from "vue";
 import MessageItem, { type MessageType } from "./MessageItem.vue";
-import { getVortPopupContainer, isServer, Z_INDEX_BASE } from "@/components/vort/composables";
+import { getVortPopupContainer, isServer, Z_INDEX_BASE } from "../composables";
 
 /** Vort Message - 全局提示 */
 
@@ -38,6 +38,8 @@ interface MessageData {
     type: MessageType;
     content: string;
     duration: number;
+    /** 同 key 更新时递增，驱动消息项重新计时 */
+    resetAt: number;
     onClose?: () => void;
 }
 
@@ -105,6 +107,7 @@ const createContainer = () => {
                         type: msg.type,
                         content: msg.content,
                         duration: msg.duration,
+                        resetAt: msg.resetAt,
                         onClose: handleClose
                     })
                 );
@@ -130,6 +133,21 @@ const destroyContainer = () => {
 // 空的消息实例（用于 SSR 环境）
 const noopInstance: MessageInstance = { close: () => {} };
 
+const messageInstance = (id: string): MessageInstance => ({
+    close: () => {
+        const index = messageList.value.findIndex((m) => m.id === id);
+        if (index > -1) {
+            const msg = messageList.value[index]!;
+            msg.onClose?.();
+            messageList.value.splice(index, 1);
+
+            if (messageList.value.length === 0) {
+                destroyContainer();
+            }
+        }
+    }
+});
+
 // 添加消息
 const addMessage = (type: MessageType, config: string | MessageConfig): MessageInstance => {
     // SSR 环境下不执行，返回空实例
@@ -143,54 +161,45 @@ const addMessage = (type: MessageType, config: string | MessageConfig): MessageI
     const id = normalizedConfig.key || generateId();
     const duration = normalizedConfig.duration ?? globalConfig.duration ?? 3000;
 
-    // 检查是否有相同 key 的消息，如果有则更新
-    const existingIndex = messageList.value.findIndex((m) => normalizedConfig.key && m.id === normalizedConfig.key);
+    // 只有显式传 key 才更新已有条目（内容与计时）。无 key 的调用每次都新弹一条：
+    // 同一句话由用户的又一次操作触发，就是一次新的反馈，合并掉会让人以为操作没生效。
+    // 需要收敛的场景（如并发请求的同类错误）由调用方传 key，堆叠上限由 maxCount 控制。
+    const existingIndex = normalizedConfig.key ? messageList.value.findIndex((m) => m.id === normalizedConfig.key) : -1;
 
     if (existingIndex > -1) {
-        // 更新已有消息
+        const existing = messageList.value[existingIndex]!;
         messageList.value[existingIndex] = {
-            ...messageList.value[existingIndex]!,
+            ...existing,
             type,
             content: normalizedConfig.content,
             duration,
-            onClose: normalizedConfig.onClose
+            resetAt: existing.resetAt + 1,
+            onClose: normalizedConfig.onClose ?? existing.onClose
         };
-    } else {
-        // 确保容器存在
-        createContainer();
-
-        // 检查最大数量限制
-        if (globalConfig.maxCount && messageList.value.length >= globalConfig.maxCount) {
-            // 移除最早的消息
-            const oldest = messageList.value.shift();
-            oldest?.onClose?.();
-        }
-
-        // 添加新消息
-        messageList.value.push({
-            id,
-            type,
-            content: normalizedConfig.content,
-            duration,
-            onClose: normalizedConfig.onClose
-        });
+        return messageInstance(existing.id);
     }
 
-    // 返回消息实例
-    return {
-        close: () => {
-            const index = messageList.value.findIndex((m) => m.id === id);
-            if (index > -1) {
-                const msg = messageList.value[index]!;
-                msg.onClose?.();
-                messageList.value.splice(index, 1);
+    // 确保容器存在
+    createContainer();
 
-                if (messageList.value.length === 0) {
-                    destroyContainer();
-                }
-            }
-        }
-    };
+    // 检查最大数量限制
+    if (globalConfig.maxCount && messageList.value.length >= globalConfig.maxCount) {
+        // 移除最早的消息
+        const oldest = messageList.value.shift();
+        oldest?.onClose?.();
+    }
+
+    // 添加新消息
+    messageList.value.push({
+        id,
+        type,
+        content: normalizedConfig.content,
+        duration,
+        resetAt: 0,
+        onClose: normalizedConfig.onClose
+    });
+
+    return messageInstance(id);
 };
 
 // Message API

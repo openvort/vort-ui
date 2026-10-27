@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import Tag from "./Tag.vue";
-import { CloseOutlined } from "@/components/vort/icons";
+import { CloseOutlined } from "../icons";
 
 defineOptions({ name: "VortDraggableTags" });
 

@@ -6,24 +6,26 @@ import { computed, inject, provide, type ComputedRef, type InjectionKey, type Re
 
 /** z-index 基础值定义 */
 export const Z_INDEX_BASE = {
-    /** 弹出层基础值（Dropdown, Select, Cascader, AutoComplete 等） */
-    popup: 1050,
+    /** 弹出层基础值（Dropdown, Select, Cascader, AutoComplete 等在普通页面浮层） */
+    popup: 100,
     /** 弹窗基础值（Modal, Dialog） */
     modal: 1000,
     /** 抽屉基础值 */
     drawer: 1000,
+    /** 确认对话框基础值（dialog.confirm / ConfirmDialog 等二次确认，需高于普通 Dialog 及其内部浮层） */
+    confirm: 2000,
     /** 消息提示基础值 */
-    message: 1010,
-    /** 通知基础值（高于 popup/tooltip，避免被下拉菜单遮挡） */
-    notification: 1090,
+    message: 3000,
+    /** 通知基础值（高于 popup/tooltip/modal） */
+    notification: 3100,
     /** Tooltip 基础值 */
-    tooltip: 1070,
+    tooltip: 120,
     /** Popover 基础值 */
-    popover: 1030,
+    popover: 110,
     /** Popconfirm 基础值 */
-    popconfirm: 1030,
+    popconfirm: 110,
     /** 图片预览基础值 */
-    imagePreview: 1080
+    imagePreview: 2500
 } as const;
 
 /**
@@ -70,7 +72,7 @@ const Z_INDEX_CONTEXT_KEY: InjectionKey<ZIndexContext> = Symbol("vort-z-index-co
  * @example
  * ```vue
  * <script setup>
- * import { useZIndexProviderValue } from '@/components/vort/composables'
+ * import { useZIndexProviderValue } from '../composables'
  *
  * // 将 Dialog 的 z-index 提供给子组件
  * useZIndexProviderValue(() => props.zIndex)
@@ -102,7 +104,7 @@ export function useZIndexProviderValue(getZIndex: () => number): void {
  * @example
  * ```vue
  * <script setup>
- * import { useZIndex } from '@/components/vort/composables'
+ * import { useZIndex } from '../composables'
  *
  * // Select 组件获取 z-index
  * const zIndex = useZIndex('popup')

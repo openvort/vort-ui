@@ -28,6 +28,8 @@ interface Props {
     always?: boolean;
     /** 滚动条最小尺寸 */
     minSize?: number;
+    /** 纵向滚动轨道距离容器顶部的偏移量 */
+    verticalTrackOffset?: number;
     /** 自定义类名 */
     class?: string;
 }
@@ -36,7 +38,8 @@ const props = withDefaults(defineProps<Props>(), {
     native: false,
     tag: "div",
     always: false,
-    minSize: 20
+    minSize: 20,
+    verticalTrackOffset: 0
 });
 
 const emit = defineEmits<{
@@ -48,6 +51,7 @@ const emit = defineEmits<{
 const scrollbarRef = ref<HTMLElement | null>(null);
 const wrapRef = ref<HTMLElement | null>(null);
 const resizeRef = ref<HTMLElement | null>(null);
+const verticalBarRef = ref<HTMLElement | null>(null);
 
 // 滚动条状态
 const sizeWidth = ref("0");
@@ -115,6 +119,8 @@ const viewStyleComputed = computed(() => {
     return props.viewStyle || {};
 });
 
+const verticalBarStyle = computed(() => ({ top: `${Math.max(0, props.verticalTrackOffset)}px` }));
+
 // 计算滚动条尺寸
 const calculateSize = () => {
     if (!wrapRef.value) return;
@@ -122,21 +128,31 @@ const calculateSize = () => {
     const wrap = wrapRef.value;
 
     // 计算垂直滚动条
+    const verticalTrackHeight = Math.max(0, wrap.clientHeight - props.verticalTrackOffset);
     const heightPercentage = (wrap.clientHeight * 100) / wrap.scrollHeight;
     const widthPercentage = (wrap.clientWidth * 100) / wrap.scrollWidth;
 
-    sizeHeight.value = heightPercentage < 100 ? `${Math.max(heightPercentage, (props.minSize / wrap.clientHeight) * 100)}%` : "";
+    sizeHeight.value =
+        heightPercentage < 100 && verticalTrackHeight > 0 ? `${Math.min(100, Math.max(heightPercentage, (props.minSize / verticalTrackHeight) * 100))}%` : "";
     sizeWidth.value = widthPercentage < 100 ? `${Math.max(widthPercentage, (props.minSize / wrap.clientWidth) * 100)}%` : "";
 
     // 计算比例
-    ratioY.value =
-        parseFloat(sizeHeight.value) / 100 !== 0
-            ? (wrap.clientHeight - parseFloat(sizeHeight.value) * 0.01 * wrap.clientHeight) / (wrap.scrollHeight - wrap.clientHeight)
-            : 1;
+    const thumbHeight = (parseFloat(sizeHeight.value) / 100) * verticalTrackHeight;
+    ratioY.value = parseFloat(sizeHeight.value) / 100 !== 0 ? (verticalTrackHeight - thumbHeight) / (wrap.scrollHeight - wrap.clientHeight) : 1;
     ratioX.value =
         parseFloat(sizeWidth.value) / 100 !== 0
             ? (wrap.clientWidth - parseFloat(sizeWidth.value) * 0.01 * wrap.clientWidth) / (wrap.scrollWidth - wrap.clientWidth)
             : 1;
+
+    // 内容区切换时 scrollHeight 与浏览器自动钳制后的 scrollTop 会同时变化。
+    // 尺寸和位移必须在同一轮同步，否则会短暂拿“新滑块长度 + 旧位移”绘制，
+    // 纵向滑块就会伸进吸顶区域并被截断一帧。
+    const scrollTop = Math.min(Math.max(0, wrap.scrollTop), Math.max(0, wrap.scrollHeight - wrap.clientHeight));
+    const scrollLeft = Math.min(Math.max(0, wrap.scrollLeft), Math.max(0, wrap.scrollWidth - wrap.clientWidth));
+    if (wrap.scrollTop !== scrollTop) wrap.scrollTop = scrollTop;
+    if (wrap.scrollLeft !== scrollLeft) wrap.scrollLeft = scrollLeft;
+    moveY.value = sizeHeight.value ? scrollTop * ratioY.value : 0;
+    moveX.value = sizeWidth.value ? scrollLeft * ratioX.value : 0;
 };
 
 // 处理滚动事件
@@ -207,15 +223,15 @@ const handleThumbMouseDownY = (e: MouseEvent) => {
 };
 
 const handleThumbMoveY = (e: MouseEvent) => {
-    if (!wrapRef.value || !scrollbarRef.value) return;
+    if (!wrapRef.value || !verticalBarRef.value) return;
 
     const wrap = wrapRef.value;
-    const scrollbar = scrollbarRef.value;
+    const track = verticalBarRef.value.getBoundingClientRect();
 
     // 计算滑块在轨道上的偏移量
-    const offset = e.clientY - scrollbar.getBoundingClientRect().top - barState.value.Y;
-    const thumbHeight = (parseFloat(sizeHeight.value) / 100) * wrap.clientHeight;
-    const maxOffset = wrap.clientHeight - thumbHeight;
+    const offset = e.clientY - track.top - barState.value.Y;
+    const thumbHeight = (parseFloat(sizeHeight.value) / 100) * track.height;
+    const maxOffset = track.height - thumbHeight;
 
     // 将滑块偏移量转换为滚动距离
     // offset / maxOffset = scrollTop / maxScrollTop
@@ -276,10 +292,10 @@ const handleTrackClickY = (e: MouseEvent) => {
     if (target.classList.contains("vort-scrollbar__thumb")) return;
 
     const wrap = wrapRef.value;
-    const track = target.getBoundingClientRect();
-    const thumbHeight = (parseFloat(sizeHeight.value) / 100) * wrap.clientHeight;
+    const track = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const thumbHeight = (parseFloat(sizeHeight.value) / 100) * track.height;
     const offset = e.clientY - track.top - thumbHeight / 2;
-    const maxOffset = wrap.clientHeight - thumbHeight;
+    const maxOffset = track.height - thumbHeight;
 
     const maxScrollTop = wrap.scrollHeight - wrap.clientHeight;
     const scrollTop = (Math.min(Math.max(0, offset), maxOffset) / maxOffset) * maxScrollTop;
@@ -322,6 +338,11 @@ onMounted(() => {
         }
     }
 });
+
+watch(
+    () => props.verticalTrackOffset,
+    () => nextTick(calculateSize)
+);
 
 onUnmounted(() => {
     if (resizeObserver) {
@@ -367,7 +388,13 @@ defineExpose({
         <template v-if="!native">
             <!-- 垂直滚动条 -->
             <Transition name="vort-scrollbar-fade">
-                <div v-show="(always || visible) && sizeHeight" class="vort-scrollbar__bar vort-scrollbar__bar--vertical" @click="handleTrackClickY">
+                <div
+                    v-show="(always || visible) && sizeHeight"
+                    ref="verticalBarRef"
+                    class="vort-scrollbar__bar vort-scrollbar__bar--vertical"
+                    :style="verticalBarStyle"
+                    @click="handleTrackClickY"
+                >
                     <div
                         class="vort-scrollbar__thumb"
                         :style="{

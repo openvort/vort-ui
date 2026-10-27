@@ -127,6 +127,22 @@
     pointer-events: none;
 }
 
+/* 菜单项里的链接按钮跟普通项同一套文字色，避免蓝字和默认字混在一个菜单里。 */
+.vort-dropdown-menu-item .vort-btn-link,
+.vort-dropdown-menu-item .vort-btn-link:hover,
+.vort-dropdown-menu-item .vort-btn-link:active,
+.vort-dropdown-menu-item a,
+.vort-dropdown-menu-item a:hover {
+    color: inherit;
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    height: auto;
+    padding: 0;
+    font-size: inherit;
+    line-height: inherit;
+}
+
 /* 危险菜单项 */
 .vort-dropdown-menu-item-danger {
     color: var(--vort-error, #ff4d4f);

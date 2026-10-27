@@ -46,6 +46,8 @@ export interface UploadLocale {
     drag_text: string;
     remove_file: string;
     preview_file: string;
+    upload_failed: string;
+    network_failed: string;
 }
 
 export interface SelectLocale {
@@ -101,6 +103,8 @@ export interface FormLocale {
     max_length: string;
     pattern: string;
     optional: string;
+    tooltip_label: string;
+    tooltip_label_default: string;
 }
 
 export interface CascaderLocale {
@@ -111,6 +115,7 @@ export interface CascaderLocale {
 export interface AutoCompleteLocale {
     placeholder: string;
     no_match: string;
+    loading: string;
 }
 
 export interface InputPasswordLocale {
@@ -120,6 +125,13 @@ export interface InputPasswordLocale {
 
 export interface AlertLocale {
     close: string;
+}
+
+export interface ResultLocale {
+    error: string;
+    forbidden: string;
+    not_found: string;
+    empty: string;
 }
 
 export interface Locale {
@@ -140,6 +152,7 @@ export interface Locale {
     AutoComplete: AutoCompleteLocale;
     InputPassword: InputPasswordLocale;
     Alert: AlertLocale;
+    Result: ResultLocale;
 }
 
 export type LocaleComponentName = Exclude<keyof Locale, "locale">;

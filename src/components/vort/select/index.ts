@@ -8,6 +8,7 @@ export type {
     SelectStatus,
     SelectMode,
     SelectVariant,
+    SelectOption as SelectOptionData,
     SelectOption as SelectOptionType,
     SelectOptionContext,
     SelectProps,

@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from "vue";
-import { getVortPopupContainer, type FloatingPlacement, type FloatingTrigger, useZIndex } from "@/components/vort/composables";
+import { getVortPopupContainer, isEventInside, type FloatingPlacement, type FloatingTrigger, useZIndex, useZIndexProviderValue } from "../composables";
+import { NoFormItemStatus } from "../form/useFormItemStatus";
 
 defineOptions({ name: "VortPopover" });
 
 // 使用 z-index 上下文，在 Dialog/Drawer 内时自动获得更高的层级
 const zIndex = useZIndex("popover");
+// 把自身层级传给内容里的 Select、Tooltip 等浮层，否则其下拉（popup 100）会被气泡（popover 110）盖住
+useZIndexProviderValue(() => zIndex.value);
 
 /** Vort Popover - 气泡卡片组件 */
 
@@ -20,6 +23,8 @@ interface Props {
     trigger?: FloatingTrigger;
     /** 是否显示箭头 */
     arrow?: boolean;
+    /** 浮层边缘与触发元素的间距 (px)，包含箭头占用的空间 */
+    offset?: number;
     /** 控制浮层显示（受控模式） */
     open?: boolean;
     /** 是否禁用 */
@@ -46,6 +51,7 @@ const props = withDefaults(defineProps<Props>(), {
     placement: "top",
     trigger: "hover",
     arrow: true,
+    offset: 14,
     autoFlip: true,
     disabled: false,
     mouseEnterDelay: 100,
@@ -107,9 +113,7 @@ const updatePosition = async () => {
     const triggerRect = triggerRef.value.getBoundingClientRect();
     const floatingWidth = floatingRef.value.offsetWidth;
     const floatingHeight = floatingRef.value.offsetHeight;
-    const gap = 8;
-    const arrowHeight = 6;
-    const totalGap = gap + arrowHeight;
+    const totalGap = props.offset;
 
     // 判断是否使用自定义容器
     const container = popupContainer.value;
@@ -281,6 +285,7 @@ const updatePosition = async () => {
             }
 
             left = Math.max(scrollLeft + 8, Math.min(left, scrollLeft + containerWidth - floatingWidth - 8));
+            top = Math.max(scrollTop + 8, Math.min(top, scrollTop + containerHeight - floatingHeight - 8));
         } else {
             const viewportWidth = window.innerWidth;
             const viewportHeight = window.innerHeight;
@@ -308,6 +313,7 @@ const updatePosition = async () => {
             }
 
             left = Math.max(8, Math.min(left, viewportWidth - floatingWidth - 8));
+            top = Math.max(8, Math.min(top, viewportHeight - floatingHeight - 8));
         }
     }
 
@@ -509,7 +515,11 @@ const handleClickOutside = (e: MouseEvent) => {
     if (props.trigger !== "click" && props.trigger !== "contextMenu") return;
 
     const target = e.target as Node;
-    if (triggerRef.value?.contains(target) || floatingRef.value?.contains(target)) {
+    if (isEventInside(e, triggerRef.value, floatingRef.value)) {
+        return;
+    }
+    // Select 等下拉层默认挂到 body，点击选项不应关闭气泡
+    if (target instanceof Element && target.closest(".vort-select-dropdown, .vort-cascader-dropdown, .vort-picker-dropdown")) {
         return;
     }
     hide();
@@ -544,6 +554,13 @@ watch(visible, async (val) => {
         stopResizeObserver();
     }
 });
+
+watch(
+    () => props.offset,
+    () => {
+        if (visible.value) updatePosition();
+    }
+);
 
 // 浮层样式
 const floatingStyle = computed(() => ({
@@ -600,15 +617,18 @@ defineExpose({
 
                 <!-- 内容 -->
                 <div class="vort-popover-inner">
-                    <!-- 标题 -->
-                    <div v-if="title || $slots.title" class="vort-popover-title">
-                        <slot name="title">{{ title }}</slot>
-                    </div>
+                    <!-- 弹层内容不继承外层 FormItem 的校验状态 -->
+                    <NoFormItemStatus>
+                        <!-- 标题 -->
+                        <div v-if="title || $slots.title" class="vort-popover-title">
+                            <slot name="title">{{ title }}</slot>
+                        </div>
 
-                    <!-- 内容 -->
-                    <div class="vort-popover-content">
-                        <slot name="content">{{ content }}</slot>
-                    </div>
+                        <!-- 内容 -->
+                        <div class="vort-popover-content">
+                            <slot name="content">{{ content }}</slot>
+                        </div>
+                    </NoFormItemStatus>
                 </div>
             </div>
         </Transition>

@@ -47,8 +47,8 @@ export type { Props as DropdownButtonProps };
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { DownOutlined } from "@/components/vort/icons";
-import { Button } from "@/components/vort/button";
+import { DownOutlined } from "../icons";
+import { Button } from "../button";
 import Dropdown from "./Dropdown.vue";
 import type { DropdownPlacement } from "./Dropdown.vue";
 

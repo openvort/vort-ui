@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, useAttrs } from "vue";
 import VortInput from "./Input.vue";
-import { EyeOutlined, EyeInvisibleOutlined } from "@/components/vort/icons";
-import { useLocale } from "@/components/vort/locale/useLocale";
+import { EyeOutlined, EyeInvisibleOutlined } from "../icons";
+import { useLocale } from "../locale/useLocale";
+import { useFormDisabled } from "../form/useFormDisabled";
 import type { InputPasswordProps } from "./types";
 
 defineOptions({ name: "VortInputPassword", inheritAttrs: false });
@@ -13,10 +14,11 @@ const { t: ipT } = useLocale("InputPassword");
 
 const props = withDefaults(defineProps<InputPasswordProps>(), {
     size: "middle",
-    disabled: false,
     bordered: true,
     visibilityToggle: true
 });
+
+const mergedDisabled = useFormDisabled(() => props.disabled);
 
 const emit = defineEmits<{
     "update:modelValue": [value: string];
@@ -36,7 +38,7 @@ const inputType = computed(() => (isVisible.value ? "text" : "password"));
 
 // 切换密码可见性
 const toggleVisibility = () => {
-    if (!props.disabled) {
+    if (!mergedDisabled.value) {
         isVisible.value = !isVisible.value;
     }
 };
@@ -48,7 +50,7 @@ const inputProps = computed(() => ({
     size: props.size,
     status: props.status,
     variant: props.variant,
-    disabled: props.disabled,
+    disabled: mergedDisabled.value,
     bordered: props.bordered,
     placeholder: props.placeholder,
     class: props.class
@@ -88,7 +90,7 @@ defineExpose({
             <span
                 v-if="visibilityToggle"
                 class="vort-input-password-icon"
-                :class="{ 'vort-input-password-icon-disabled': disabled }"
+                :class="{ 'vort-input-password-icon-disabled': mergedDisabled }"
                 role="button"
                 tabindex="-1"
                 :aria-label="isVisible ? ipT('hide_password') : ipT('show_password')"

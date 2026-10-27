@@ -15,11 +15,14 @@ export type { SelectProps, SelectOption, SelectOptionContext, SelectSize, Select
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, useAttrs, watch } from "vue";
 import type { StyleValue } from "vue";
-import type { SelectProps, SelectOption, SelectOptionContext, SelectVariant } from "./types";
+import type { SelectProps, SelectOption, SelectOptionContext } from "./types";
 import "./select.css";
-import { CloseCircleFilled, CloseOutlined, DownOutlined, CheckOutlined } from "@/components/vort/icons";
-import { getVortPopupContainer, useZIndex } from "@/components/vort/composables";
-import { useLocale } from "@/components/vort/locale/useLocale";
+import { CloseCircleFilled, CloseOutlined, DownOutlined, CheckOutlined } from "../icons";
+import { getVortPopupContainer, useZIndex } from "../composables";
+import { useLocale } from "../locale/useLocale";
+import { useFormDisabled } from "../form/useFormDisabled";
+import { useFormItemStatus } from "../form/useFormItemStatus";
+import { useFormVariant } from "../form/useFormVariant";
 
 defineOptions({ name: "VortSelect", inheritAttrs: false });
 
@@ -33,7 +36,6 @@ const props = withDefaults(defineProps<SelectProps>(), {
     options: () => [],
     placeholder: undefined,
     size: "middle",
-    disabled: false,
     status: undefined,
     mode: undefined,
     showSearch: false,
@@ -52,11 +54,15 @@ const props = withDefaults(defineProps<SelectProps>(), {
 });
 
 const popupContainer = computed(() => props.getPopupContainer?.() ?? getVortPopupContainer());
-const resolvedVariant = computed<SelectVariant>(() => {
-    return props.variant ?? (props.bordered ? "outlined" : "borderless");
-});
+const resolvedVariant = useFormVariant(
+    () => props.variant,
+    () => props.bordered
+);
 const placeholder = computed(() => props.placeholder ?? selT("placeholder"));
 const notFoundContent = computed(() => props.notFoundContent ?? selT("no_match"));
+
+const mergedDisabled = useFormDisabled(() => props.disabled);
+const mergedStatus = useFormItemStatus(() => props.status);
 
 const zIndex = useZIndex("popup");
 
@@ -179,7 +185,7 @@ const filteredOptions = computed(() => {
 });
 
 const showClearButton = computed(() => {
-    if (!props.allowClear || props.disabled) return false;
+    if (!props.allowClear || mergedDisabled.value) return false;
     return selectedValues.value.length > 0;
 });
 
@@ -199,8 +205,8 @@ const displayText = computed(() => {
 const triggerClasses = computed(() => {
     const classes = ["vort-select-selector", `vort-select-${props.size}`, `vort-select-${resolvedVariant.value}`];
     if (isMultiple.value) classes.push("vort-select-multiple");
-    if (props.status) classes.push(`vort-select-${props.status}`);
-    if (props.disabled) classes.push("vort-select-disabled");
+    if (mergedStatus.value) classes.push(`vort-select-${mergedStatus.value}`);
+    if (mergedDisabled.value) classes.push("vort-select-disabled");
     if (isFocused.value || isOpen.value) classes.push("vort-select-focused");
     if (props.class) classes.push(props.class);
     return classes;
@@ -238,7 +244,7 @@ const updatePosition = () => {
 
 // ============ 打开/关闭 ============
 const openDropdown = () => {
-    if (props.disabled || isOpen.value) return;
+    if (mergedDisabled.value || isOpen.value) return;
     closeAllOtherSelects(closeThis);
     shouldRenderPortal.value = true;
     isOpen.value = true;
@@ -267,7 +273,7 @@ const handleAnimationEnd = () => {
 
 // ============ 事件处理 ============
 const handleTriggerClick = () => {
-    if (props.disabled) return;
+    if (mergedDisabled.value) return;
     if (isOpen.value) closeDropdown();
     else openDropdown();
 };
@@ -317,7 +323,7 @@ const handleClear = (e: Event) => {
 };
 
 const handleRemoveTag = (val: string | number) => {
-    if (props.disabled) return;
+    if (mergedDisabled.value) return;
     const current = selectedValues.value.filter((v) => String(v) !== String(val));
     emit("update:modelValue", current);
     const opt = mergedOptions.value.find((o) => String(o.value) === String(val));
@@ -477,7 +483,7 @@ defineExpose({
                 <!-- 已选标签 -->
                 <span v-for="option in displayedTags" :key="String(option.value)" :class="tagClasses">
                     <span class="vort-select-tag-text">{{ option.label }}</span>
-                    <span v-if="!disabled" class="vort-select-tag-remove" @click.stop="handleRemoveTag(option.value)">
+                    <span v-if="!mergedDisabled" class="vort-select-tag-remove" @click.stop="handleRemoveTag(option.value)">
                         <CloseOutlined class="vort-select-tag-remove-icon" />
                     </span>
                 </span>
@@ -492,7 +498,7 @@ defineExpose({
                     ref="inputRef"
                     :value="searchValue"
                     :placeholder="showPlaceholder ? placeholder : ''"
-                    :disabled="disabled"
+                    :disabled="mergedDisabled"
                     class="vort-select-search-input"
                     autocomplete="off"
                     @input="handleSearchInput"
@@ -540,7 +546,7 @@ defineExpose({
                     ref="inputRef"
                     :value="isOpen ? searchValue : displayText"
                     :placeholder="displayText || placeholder"
-                    :disabled="disabled"
+                    :disabled="mergedDisabled"
                     class="vort-select-search-input"
                     autocomplete="off"
                     @input="handleSearchInput"
@@ -610,8 +616,11 @@ defineExpose({
                         @mouseenter="highlightedIndex = index"
                     >
                         <span class="vort-select-option-content">
-                            <component v-if="option.render" :is="option.render" />
-                            <template v-else>{{ option.label }}</template>
+                            <!-- 只作用于下拉列表；选择框里仍显示 label（或 render） -->
+                            <slot name="option" :option="option">
+                                <component v-if="option.render" :is="option.render" />
+                                <template v-else>{{ option.label }}</template>
+                            </slot>
                         </span>
 
                         <span v-if="isMultiple && isValueSelected(option.value)" class="vort-select-option-check">
@@ -683,6 +692,21 @@ defineExpose({
     cursor: not-allowed;
 }
 
+/*
+ * 已选值与已选标签自己声明了正常文本色，禁用时得跟着一起变淡；
+ * 带搜索时选中值渲染在原生 input 上，还要压住浏览器自带的禁用灰。
+ */
+.vort-select-disabled .vort-select-value,
+.vort-select-disabled .vort-select-tag-text {
+    color: var(--vort-text-quaternary, rgba(0, 0, 0, 0.25));
+}
+
+.vort-select-disabled .vort-select-search-input {
+    color: var(--vort-text-quaternary, rgba(0, 0, 0, 0.25));
+    -webkit-text-fill-color: var(--vort-text-quaternary, rgba(0, 0, 0, 0.25));
+    cursor: not-allowed;
+}
+
 /* ========================================
    形态变体 - Outlined（默认）
    ======================================== */
@@ -701,16 +725,41 @@ defineExpose({
 
 .vort-select-filled:hover:not(.vort-select-disabled) {
     --_bg-color: rgba(0, 0, 0, 0.06);
+    border-color: transparent;
 }
 
 .vort-select-filled.vort-select-focused:not(.vort-select-disabled) {
     --_bg-color: #fff;
     border-color: var(--_focus-color);
+    box-shadow: none;
 }
 
-.vort-select-filled.vort-select-error,
-.vort-select-filled.vort-select-warning {
-    border-color: var(--_border-color);
+/* Filled + Error/Warning：状态色浅底，不显示边框，聚焦时白底 + 状态色边框（对齐 antd） */
+.vort-select-filled.vort-select-error:not(.vort-select-disabled) {
+    --_bg-color: var(--vort-error-bg, #fff2f0);
+}
+
+.vort-select-filled.vort-select-warning:not(.vort-select-disabled) {
+    --_bg-color: var(--vort-warning-bg, #fffbe6);
+}
+
+.vort-select-filled.vort-select-error:hover:not(.vort-select-disabled) {
+    --_bg-color: var(--vort-error-bg-hover, #fff1f0);
+}
+
+.vort-select-filled.vort-select-warning:hover:not(.vort-select-disabled) {
+    --_bg-color: var(--vort-warning-bg-hover, #fff1b8);
+}
+
+.vort-select-filled.vort-select-error.vort-select-focused:not(.vort-select-disabled),
+.vort-select-filled.vort-select-warning.vort-select-focused:not(.vort-select-disabled) {
+    --_bg-color: #fff;
+}
+
+/* 填充底色上的多选标签改用白底细边，避免与底色融为一片 */
+.vort-select-filled .vort-select-tag {
+    background: #fff;
+    box-shadow: inset 0 0 0 1px rgba(5, 5, 5, 0.06);
 }
 
 /* ========================================
@@ -722,31 +771,49 @@ defineExpose({
 }
 
 .vort-select-borderless:hover:not(.vort-select-disabled) {
-    background: rgba(0, 0, 0, 0.02);
     border-color: transparent;
 }
 
+/* 聚焦时显示 1px 边框，颜色随状态；鼠标点击与键盘聚焦都显示 */
 .vort-select-borderless.vort-select-focused:not(.vort-select-disabled) {
     background: transparent;
-    border-color: transparent;
+    border-color: var(--_focus-color);
     box-shadow: none;
+}
+
+/* Filled / Borderless 没有常显的状态边框，用状态色文字提示 */
+.vort-select-filled.vort-select-error:not(.vort-select-disabled) .vort-select-value:not(.vort-select-value-focused),
+.vort-select-filled.vort-select-error:not(.vort-select-disabled) .vort-select-search-input,
+.vort-select-borderless.vort-select-error:not(.vort-select-disabled) .vort-select-value:not(.vort-select-value-focused),
+.vort-select-borderless.vort-select-error:not(.vort-select-disabled) .vort-select-search-input {
+    color: var(--vort-error, #ff4d4f);
+}
+
+.vort-select-filled.vort-select-warning:not(.vort-select-disabled) .vort-select-value:not(.vort-select-value-focused),
+.vort-select-filled.vort-select-warning:not(.vort-select-disabled) .vort-select-search-input,
+.vort-select-borderless.vort-select-warning:not(.vort-select-disabled) .vort-select-value:not(.vort-select-value-focused),
+.vort-select-borderless.vort-select-warning:not(.vort-select-disabled) .vort-select-search-input {
+    color: var(--vort-warning, #faad14);
 }
 
 /* ========================================
    形态变体 - Underlined
    ======================================== */
+/* 四边保留 1px 透明边框、只给底边着色：切换形态时盒子尺寸不变，也不会从 border: none 的默认粗黑边过渡出来 */
 .vort-select-underlined {
-    border: none;
-    border-bottom: 1px solid var(--_border-color);
+    border: 1px solid transparent;
+    border-bottom-color: var(--_border-color);
     border-radius: 0;
     background: transparent;
 }
 
 .vort-select-underlined:hover:not(.vort-select-disabled) {
+    border-color: transparent;
     border-bottom-color: var(--_focus-color);
 }
 
 .vort-select-underlined.vort-select-focused:not(.vort-select-disabled) {
+    border-color: transparent;
     border-bottom-color: var(--_focus-color);
     box-shadow: none;
 }
@@ -967,6 +1034,7 @@ defineExpose({
     position: relative;
     display: flex;
     align-items: center;
+    box-sizing: border-box;
     width: 100%;
     padding: 5px 12px;
     font-size: var(--vort-font-size-sm, 14px);

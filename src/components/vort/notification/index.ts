@@ -1,6 +1,6 @@
 import { createApp, ref, h, type App } from "vue";
 import NotificationItem, { type NotificationType, type NotificationPlacement } from "./NotificationItem.vue";
-import { getVortPopupContainer, isServer, Z_INDEX_BASE } from "@/components/vort/composables";
+import { getVortPopupContainer, isServer, Z_INDEX_BASE } from "../composables";
 
 /** Vort Notification - 全局通知提醒 */
 
@@ -18,6 +18,8 @@ export interface NotificationConfig {
     placement?: NotificationPlacement;
     /** 关闭时的回调 */
     onClose?: () => void;
+    /** 点击通知主体时的回调（点关闭按钮不触发）。设置后通知呈可点击态，点击后自动关闭 */
+    onClick?: () => void;
     /** 唯一标识 */
     key?: string;
 }
@@ -52,6 +54,7 @@ interface NotificationData {
     closable: boolean;
     placement: NotificationPlacement;
     onClose?: () => void;
+    onClick?: () => void;
 }
 
 // 全局配置
@@ -177,6 +180,11 @@ const createContainer = (placement: NotificationPlacement) => {
                         duration: n.duration,
                         closable: n.closable,
                         placement: n.placement,
+                        clickable: !!n.onClick,
+                        onBodyClick: () => {
+                            n.onClick?.();
+                            handleClose(n.id);
+                        },
                         onClose: handleClose
                     })
                 );
@@ -230,7 +238,8 @@ const addNotification = (type: NotificationType, config: NotificationConfig): No
             duration,
             closable: config.closable ?? true,
             placement,
-            onClose: config.onClose
+            onClose: config.onClose,
+            onClick: config.onClick
         };
     } else {
         // 确保容器存在
@@ -252,7 +261,8 @@ const addNotification = (type: NotificationType, config: NotificationConfig): No
             duration,
             closable: config.closable ?? true,
             placement,
-            onClose: config.onClose
+            onClose: config.onClose,
+            onClick: config.onClick
         });
     }
 

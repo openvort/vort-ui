@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, type Ref } from "vue";
+import { useFormDisabled } from "../form/useFormDisabled";
 
 defineOptions({ name: "VortCheckbox" });
 
@@ -19,7 +20,6 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-    disabled: false,
     indeterminate: false
 });
 
@@ -46,13 +46,11 @@ const isChecked = computed(() => {
     return props.checked;
 });
 
-// 是否禁用
-const isDisabled = computed(() => {
-    if (checkboxGroupContext) {
-        return checkboxGroupContext.disabled.value || props.disabled;
-    }
-    return props.disabled;
-});
+// disabled 合并：自身 prop > Group disabled > Form 级 disabled > false
+const isDisabled = useFormDisabled(
+    () => props.disabled,
+    () => checkboxGroupContext?.disabled.value
+);
 
 // 处理点击
 const handleChange = (event: Event) => {

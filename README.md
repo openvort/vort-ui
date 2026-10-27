@@ -1,149 +1,56 @@
-<p align="center">
-  <h1 align="center">Vort UI</h1>
-</p>
+# `@openvort/vort-ui`
 
-<p align="center">
-  融合 <strong>Ant Design 5.x 精致视觉</strong>与 <strong>Element Plus 开发体验</strong>的企业级 Vue 3 组件库
-</p>
+Vort UI 是面向 Vue 3.5 的 Web 通用组件库，提供组件、主题样式、类型声明、自动导入和文档示例。
 
-<p align="center">
-  <a href="https://www.npmjs.com/package/@openvort/vort-ui"><img src="https://img.shields.io/npm/v/@openvort/vort-ui?color=1677ff" alt="npm version"></a>
-  <a href="https://github.com/openvort/vort-ui/blob/master/LICENSE"><img src="https://img.shields.io/npm/l/@openvort/vort-ui" alt="license"></a>
-  <a href="https://github.com/openvort/vort-ui/actions/workflows/ci.yml"><img src="https://github.com/openvort/vort-ui/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/badge/vue-3.4+-42b883" alt="vue">
-  <img src="https://img.shields.io/badge/typescript-%E2%9C%93-3178c6" alt="typescript">
-</p>
+## 源码与协作
 
-<p align="center">
-  <a href="./README.en.md">English</a> | 中文
-</p>
+组件代码位于 `src/`，文档与 Demo 位于 `docs/`。公开贡献通过 [GitHub PR](https://github.com/openvort/vort-ui/pulls) 提交，开发和验证步骤见 [贡献指南](./CONTRIBUTING.md)。
 
----
+## 使用
 
-## 特性
+```ts
+import { Button, message } from "@openvort/vort-ui";
+import "@openvort/vort-ui/styles";
+```
 
-- **精致设计** — 遵循 Ant Design 5.x 设计规范与动效体系
-- **开发友好** — Element Plus 风格的 API 设计，上手即用
-- **50+ 组件** — 覆盖常见企业级 UI 场景
-- **TypeScript** — 全部组件提供完整类型定义
-- **按需导入** — 支持自动导入与 Tree Shaking
-- **国际化** — 内置中英文语言包
-- **主题定制** — 基于 CSS 变量的主题系统
+分页布局可通过 CSS 变量 `--vort-pagination-justify` 统一设置对齐方式，作用于 Pagination 内部内容及 Table 底部分页容器；例如管理后台设置为 `flex-end`。未设置时保留各组件的默认对齐方式。
 
-## 安装
+自动导入场景可使用 `@openvort/vort-ui/resolver`。resolver 属于构建期入口，不从运行时根入口重复导出；业务应用如果还有业务组件，需要在应用侧追加自己的 resolver。
+
+组件值与同名数据类型可能同时存在时，公共入口使用明确的类型别名，例如
+`SelectOptionType`、`SelectOptionData` 和 `TableColumnType`；组件值仍分别是
+`SelectOption` 与 `TableColumn`。
+
+## 文档与演示
+
+文档演示站与组件源码位于同一个 package：
+
+- `src` 是唯一组件源码；
+- `docs/src/views/demo` 保存通用组件的交互式示例；
+- `docs/src/demo-catalog.ts` 是路由、侧边栏和后续搜索索引共用的 Demo 清单；
+- Demo 只从 `@openvort/vort-ui`、`@openvort/vort-ui/styles` 和 `@openvort/vort-ui/resolver` 的公开入口消费组件；
+- `docs-dist` 是独立的静态站产物，不会进入 npm 包的 `dist`。
+
+本地启动和构建文档站：
 
 ```bash
-# npm
-npm install @openvort/vort-ui
-
-# pnpm（推荐）
-pnpm add @openvort/vort-ui
-
-# yarn
-yarn add @openvort/vort-ui
+pnpm dev:docs
+pnpm build:docs
+pnpm preview:docs
 ```
 
-## 快速开始
+默认站点路径为 `/components/`，以便兼容现有 `vortui.com/components/*` 文档地址。部署静态产物时需为该前缀配置 history fallback。
 
-### 完整引入
+## 依赖约束
 
-```typescript
-// main.ts
-import { createApp } from 'vue'
-import VortUI from '@openvort/vort-ui'
-import '@openvort/vort-ui/styles'
+Form 的 schema 类型按 Zod 3 维护；使用 Zod 4 的应用升级前需核对 Form `rules` 的类型与运行兼容性。
 
-const app = createApp(App)
-app.use(VortUI)
-app.mount('#app')
-```
+Form 的 `keepValuesOnUnmount` 默认是 `false`。分页或分步表单可以显式设置 `:keep-values-on-unmount="true"`，保留 FormItem 卸载前的内部字段值；整表 schema 仍负责验证全部数据，条件字段仍须按当前模式判断。该属性不保留已卸载字段的局部验证器，也不改变 model 的合并同步策略。完整示例见文档站的 Form Demo。
 
-### 按需引入
+## 构建与发布
 
-```typescript
-import { Button, Input } from '@openvort/vort-ui'
-import '@openvort/vort-ui/styles'
-```
+源码开发通过 `exports` 消费 `src`，组件与文档站保持同源。运行 `pnpm build` 生成 `dist` 中的 JavaScript、CSS、resolver、声明文件与 web-types；`pnpm build:docs` 生成独立的 `docs-dist`。`prepack` 只构建 npm 产物，不把文档站打进包内。
 
-### 自动导入（推荐）
+`prepack` 会自动执行同一构建，避免打包时使用过期产物。实际包验收使用 `pnpm pack`，它会应用 `publishConfig` 并将 workspace 的 `catalog:` 依赖转换为发布版本；不要只依据 `npm pack --dry-run` 判断发布入口。声明生成使用 `vue-tsc`，并移除仅用于运行时的 CSS 副作用导入，避免发布包的类型入口依赖未发布的源码样式路径。
 
-```typescript
-// vite.config.ts
-import Components from 'unplugin-vue-components/vite'
-import { VortResolver } from '@openvort/vort-ui/resolver'
-
-export default defineConfig({
-  plugins: [
-    Components({
-      resolvers: [VortResolver()]
-    })
-  ]
-})
-```
-
-然后在模板中直接使用，无需手动导入：
-
-```vue
-<template>
-  <vort-button type="primary">按钮</vort-button>
-  <vort-input v-model="value" placeholder="请输入" />
-</template>
-```
-
-## 组件列表
-
-### 通用
-Button 按钮、Dropdown 下拉菜单、Menu 导航菜单、Divider 分割线
-
-### 布局
-Card 卡片、Grid 栅格、Scrollbar 滚动条、Anchor 锚点
-
-### 数据录入
-Form 表单、Input 输入框、InputNumber 数字输入框、Textarea 文本域、Select 选择器、Cascader 级联选择、Checkbox 复选框、Radio 单选框、Switch 开关、DatePicker 日期选择器、TimePicker 时间选择器、ColorPicker 颜色选择器、Slider 滑动条、Upload 上传、AutoComplete 自动补全
-
-### 数据展示
-Table 表格、Pagination 分页、Tabs 标签页、Tag 标签、Image 图片、Statistic 统计数值、Timeline 时间线、Segmented 分段控制器、Skeleton 骨架屏、Badge 徽标
-
-### 反馈
-Dialog 对话框、Drawer 抽屉、Message 消息提示、Notification 通知、Popconfirm 气泡确认、Popover 气泡卡片、Tooltip 文字提示、Spin 加载中、Steps 步骤条、Alert 警告提示
-
-### 配置
-ConfigProvider 全局配置（国际化与主题）
-
-## 浏览器支持
-
-| Chrome | Firefox | Safari | Edge |
-|--------|---------|--------|------|
-| 最近 2 个版本 | 最近 2 个版本 | 最近 2 个版本 | 最近 2 个版本 |
-
-## 本地开发
-
-```bash
-# 克隆仓库
-git clone https://github.com/openvort/vort-ui.git
-cd vort-ui
-
-# 安装依赖
-pnpm install
-
-# 启动开发服务器（演示站）
-pnpm dev
-
-# 构建组件库
-pnpm build:lib
-
-# 类型检查
-pnpm type-check
-```
-
-## 参与贡献
-
-欢迎所有形式的贡献！请在提交 Pull Request 之前阅读 [贡献指南](./CONTRIBUTING.md)。
-
-## 更新日志
-
-查看 [CHANGELOG.md](./CHANGELOG.md) 了解完整版本历史。
-
-## 开源协议
-
-[MIT](./LICENSE) - Copyright (c) 2026 OpenVort Team
+正式版本由维护者从统一发布源导出，公开 PR 合入后不会直接触发 npm 发布。内部工作区包保留 `private: true`；正式 tarball 仅在独立导出的公开工程中打包，上传使用同一个已验收的 tgz。

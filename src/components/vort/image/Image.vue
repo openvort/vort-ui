@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick, inject } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted, nextTick, inject } from "vue";
 import {
     CloseOutlined,
     ZoomInOutlined,
@@ -10,8 +10,8 @@ import {
     DownloadOutlined,
     ImageOutlined,
     ImageBrokenOutlined
-} from "@/components/vort/icons";
-import { getVortTeleportTo, useOverlayStack, useZIndex } from "@/components/vort/composables";
+} from "../icons";
+import { getVortTeleportTo, useOverlayStack, useZIndex } from "../composables";
 
 defineOptions({ name: "VortImage" });
 
@@ -37,6 +37,12 @@ interface Props {
     height?: number | string;
     /** 图片填充模式 */
     fit?: "fill" | "contain" | "cover" | "none" | "scale-down";
+    /** 原生 loading：lazy 时进入视口附近才加载；不传则沿用浏览器默认 */
+    loading?: "eager" | "lazy";
+    /** 原生 decoding：图片解码方式 */
+    decoding?: "sync" | "async" | "auto";
+    /** 原生 fetchpriority：相对其他图片的请求优先级 */
+    fetchpriority?: "high" | "low" | "auto";
     /** 是否支持预览，或预览配置 */
     preview?: boolean | PreviewConfig;
     /** 加载失败显示的图片 */
@@ -70,7 +76,7 @@ const emit = defineEmits<{
 }>();
 
 // 状态
-const loading = ref(true);
+const isLoading = ref(true);
 const error = ref(false);
 const fallbackLoading = ref(false);
 const fallbackError = ref(false);
@@ -239,14 +245,14 @@ const previewImageStyle = computed(() => {
 
 // 图片加载完成
 const handleLoad = (e: Event) => {
-    loading.value = false;
+    isLoading.value = false;
     error.value = false;
     emit("load", e);
 };
 
 // 图片加载失败
 const handleError = (e: Event) => {
-    loading.value = false;
+    isLoading.value = false;
     error.value = true;
     // 如果有 fallback，开始加载 fallback
     if (props.fallback) {
@@ -254,6 +260,22 @@ const handleError = (e: Event) => {
     }
     emit("error", e);
 };
+
+// 失败后更换地址时回到加载态，清掉错误与 fallback 状态；
+// 正常换图不重置，旧图保持显示到新图加载完成，避免闪烁
+watch(
+    () => props.src,
+    (next, previous) => {
+        if (next === previous || !error.value) return;
+        isLoading.value = true;
+        error.value = false;
+        fallbackLoading.value = false;
+        fallbackError.value = false;
+    }
+);
+
+// lazy 图片加载前不能 display: none，否则浏览器不会开始加载；改为占位不可见
+const keepInLayoutWhileLoading = computed(() => props.loading === "lazy");
 
 // Fallback 图片加载完成
 const handleFallbackLoad = () => {
@@ -496,18 +518,24 @@ onUnmounted(() => {
 <template>
     <div :class="['vort-image', props.class]" :style="imageStyle">
         <!-- 加载中占位 -->
-        <div v-if="(loading || fallbackLoading) && placeholder" class="vort-image-placeholder">
+        <div v-if="(isLoading || fallbackLoading) && placeholder" class="vort-image-placeholder">
             <ImageOutlined class="vort-image-placeholder-icon" />
         </div>
 
         <!-- 主图片 -->
         <img
             ref="imageRef"
-            v-show="!loading && !error"
-            :class="['vort-image-img', { 'vort-image-img-preview': isPreviewEnabled }]"
+            v-show="!error && (!isLoading || keepInLayoutWhileLoading)"
+            :class="[
+                'vort-image-img',
+                { 'vort-image-img-preview': isPreviewEnabled, 'vort-image-img-pending': isLoading && keepInLayoutWhileLoading }
+            ]"
             :style="{ objectFit: fit, width: '100%', height: '100%', maxWidth: 'none' }"
             :src="src"
             :alt="alt"
+            :loading="props.loading"
+            :decoding="decoding"
+            :fetchpriority="fetchpriority"
             @load="handleLoad"
             @error="handleError"
             @click="openPreview"
@@ -615,6 +643,11 @@ onUnmounted(() => {
 
 .vort-image-img-preview {
     cursor: pointer;
+}
+
+/* lazy 加载中：保留布局让浏览器判断是否进入视口，但不显示未完成的图片 */
+.vort-image-img-pending {
+    visibility: hidden;
 }
 
 /* 加载占位 */

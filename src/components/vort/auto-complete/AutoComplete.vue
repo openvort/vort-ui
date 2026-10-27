@@ -1,10 +1,17 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from "vue";
-import { Input } from "@/components/vort/input";
-import { getVortPopupContainer, useZIndex } from "@/components/vort/composables";
-import { useLocale } from "@/components/vort/locale/useLocale";
+import { Input } from "../input";
+import { getVortPopupContainer, isEventInside, useZIndex } from "../composables";
+import { useLocale } from "../locale/useLocale";
+import { useFormDisabled } from "../form/useFormDisabled";
+import { useFormVariant } from "../form/useFormVariant";
+import type { FormVariant } from "../form/types";
 
 defineOptions({ name: "VortAutoComplete" });
+
+// 同一页面可能同时存在多个自动完成输入框。给最近打开的面板一个递增层级，
+// 避免它被同级表单行或仍在离场动画中的旧面板覆盖。
+let autoCompletePopupSequence = 0;
 
 const { t: acT } = useLocale("AutoComplete");
 
@@ -40,7 +47,9 @@ interface Props {
     status?: InputStatus;
     /** 是否禁用 */
     disabled?: boolean;
-    /** 是否有边框 */
+    /** 形态变体；不传时依次回退 bordered、Form、ConfigProvider */
+    variant?: FormVariant;
+    /** 是否有边框（兼容旧用法，false 等同 variant="borderless"，优先使用 variant） */
     bordered?: boolean;
     /** 是否支持清除 */
     allowClear?: boolean;
@@ -48,6 +57,15 @@ interface Props {
     class?: string;
     /** 空数据时显示的内容 */
     notFoundContent?: string | null;
+    /** 选项正在异步加载：没有可显示的选项时下拉展示加载提示，而不是空状态 */
+    loading?: boolean;
+    /**
+     * 加载提示的延迟显示时间（毫秒）。加载在此时间内完成就不显示加载提示，面板直接以结果出现，
+     * 避免快请求下「加载中」空态闪一下再缩成短列表；期间也不会把「无匹配」当结果展示。0 为立即显示
+     */
+    loadingDelay?: number;
+    /** 聚焦时是否总是展开下拉。默认只在已有选项时展开；选项由聚焦触发异步加载的场景应开启，以便先展示加载中 / 空状态 */
+    openOnFocus?: boolean;
     /** 是否根据输入项进行筛选，默认按 value 进行筛选 */
     filterOption?: boolean | ((inputValue: string, option: AutoCompleteOption) => boolean);
     /** 是否默认高亮第一个选项 */
@@ -74,10 +92,12 @@ const props = withDefaults(defineProps<Props>(), {
     options: () => [],
     placeholder: undefined,
     size: "middle",
-    disabled: false,
     bordered: true,
     allowClear: false,
     notFoundContent: undefined,
+    loading: false,
+    loadingDelay: 0,
+    openOnFocus: false,
     filterOption: true,
     defaultActiveFirstOption: true,
     autoAdjustOverflow: true,
@@ -87,6 +107,13 @@ const props = withDefaults(defineProps<Props>(), {
     open: undefined,
     defaultOpen: false
 });
+
+const mergedDisabled = useFormDisabled(() => props.disabled);
+// 外层解析后显式传给内层 Input，避免内层再按自身 bordered 默认值判断
+const mergedVariant = useFormVariant(
+    () => props.variant,
+    () => props.bordered
+);
 
 const popupContainer = computed(() => props.getPopupContainer?.() ?? getVortPopupContainer());
 const resolvedPlaceholder = computed(() => props.placeholder ?? acT("placeholder"));
@@ -109,12 +136,17 @@ const dropdownRef = ref<HTMLElement | null>(null);
 const triggerRef = ref<HTMLElement | null>(null);
 const isOpen = ref(props.defaultOpen);
 const shouldRenderTeleport = ref(false); // 控制 Teleport 是否渲染，避免产生 <!--v-if--> 注释
+const popupZIndex = ref(zIndex.value);
 const innerValue = ref(props.modelValue ?? props.defaultValue ?? "");
 const activeIndex = ref(-1);
 const position = ref({ top: 0, left: 0, width: 0 });
 const isFocused = ref(false);
 const placement = ref<"top" | "bottom">("bottom");
 const justSelected = ref(false); // 标记是否刚选择了选项，防止重新打开
+
+// 空状态/加载状态是异步挂载的，面板高度可能在打开后才确定。
+// 监听真实 DOM 尺寸，避免沿用打开前的估算高度。
+let dropdownResizeObserver: ResizeObserver | null = null;
 
 // ============ 受控/非受控模式 ============
 const isControlledOpen = computed(() => props.open !== undefined);
@@ -146,9 +178,45 @@ const filteredOptions = computed(() => {
     });
 });
 
-// ============ 是否显示空状态 ============
+// ============ 加载提示延迟显示 ============
+const loadingDelayElapsed = ref(false);
+let loadingDelayTimer: ReturnType<typeof setTimeout> | null = null;
+
+const clearLoadingDelayTimer = () => {
+    if (loadingDelayTimer !== null) {
+        clearTimeout(loadingDelayTimer);
+        loadingDelayTimer = null;
+    }
+};
+
+watch(
+    () => props.loading,
+    (loading) => {
+        clearLoadingDelayTimer();
+        loadingDelayElapsed.value = false;
+        if (!loading || props.loadingDelay <= 0) return;
+        loadingDelayTimer = setTimeout(() => {
+            loadingDelayTimer = null;
+            loadingDelayElapsed.value = true;
+        }, props.loadingDelay);
+    },
+    { immediate: true }
+);
+
+/** 加载提示是否该显示出来：没有延迟就跟随 loading，有延迟则要等过了阈值 */
+const loadingShown = computed(() => props.loading && (props.loadingDelay <= 0 || loadingDelayElapsed.value));
+
+// ============ 是否显示空状态（加载中也占用这块区域） ============
+// 加载中且还没到延迟阈值时什么都不显示：此刻的「无匹配」不是结果，闪出来只会误导
 const showEmpty = computed(() => {
-    return filteredOptions.value.length === 0 && props.notFoundContent !== null;
+    if (filteredOptions.value.length > 0) return false;
+    if (props.loading) return loadingShown.value;
+    return props.notFoundContent !== null;
+});
+
+const emptyText = computed(() => {
+    if (loadingShown.value) return acT("loading");
+    return props.notFoundContent ?? acT("no_match");
 });
 
 // ============ 监听 modelValue 变化 ============
@@ -161,21 +229,37 @@ watch(
     }
 );
 
+// 异步加载场景：下拉先以加载中展开，选项到达后再补上默认高亮
+watch(
+    () => filteredOptions.value.length,
+    (count, prevCount) => {
+        if (!dropdownVisible.value) return;
+        if (prevCount === 0 && count > 0 && props.defaultActiveFirstOption) {
+            activeIndex.value = 0;
+        }
+        // 列表条目更新后重新测量，未支持 ResizeObserver 时也能校正。
+        nextTick(updatePosition);
+    }
+);
+
 // ============ 计算下拉位置 ============
 const updatePosition = () => {
     if (!triggerRef.value) return;
 
     const rect = triggerRef.value.getBoundingClientRect();
-    const dropdownHeight = Math.min(props.listHeight + 16, 300); // 估算高度用于判断空间
+    // 挂载前仅预估位置；面板真正挂载及尺寸变化后会按实际高度校正。
+    // offsetHeight 不受进入动画的缩放影响。
+    // 不要用 transform 把整个面板向上移：进入动画也会改写 transform，二者会互相覆盖。
+    const dropdownHeight = dropdownRef.value?.offsetHeight ?? Math.min(props.listHeight + 16, 300);
     const viewportHeight = window.innerHeight;
 
     let top = rect.bottom + 4;
 
     // 边界检测：如果下方空间不够，则显示在上方
     if (props.autoAdjustOverflow && top + dropdownHeight > viewportHeight) {
-        // 向上弹出：设置为输入框顶部减去间距，用 transform 偏移自身高度
+        // 向上弹出时直接设置面板顶部，给进入动画保留 transform 属性。
         placement.value = "top";
-        top = rect.top - 4;
+        top = Math.max(8, rect.top - dropdownHeight - 4);
     } else {
         placement.value = "bottom";
     }
@@ -187,9 +271,42 @@ const updatePosition = () => {
     };
 };
 
+const stopDropdownResizeObserver = () => {
+    dropdownResizeObserver?.disconnect();
+    dropdownResizeObserver = null;
+};
+
+const observeDropdownSize = (dropdown: HTMLElement | null) => {
+    stopDropdownResizeObserver();
+    if (!dropdown || typeof ResizeObserver === "undefined") return;
+
+    dropdownResizeObserver = new ResizeObserver(() => {
+        // 面板离场后仍可能收到一次回调，避免用旧节点覆盖新状态。
+        if (dropdownVisible.value && dropdownRef.value === dropdown) {
+            updatePosition();
+        }
+    });
+    dropdownResizeObserver.observe(dropdown, { box: "border-box" });
+};
+
+// Teleport 的面板在 loadingDelay 结束或异步结果变化后才会挂载，
+// flush:'post' 确保测量发生在 DOM 更新之后。
+watch(
+    () => dropdownRef.value,
+    (dropdown) => {
+        observeDropdownSize(dropdown);
+        if (dropdown && dropdownVisible.value) {
+            updatePosition();
+        }
+    },
+    { flush: "post" }
+);
+
 // ============ 打开/关闭下拉 ============
 const openDropdown = () => {
-    if (props.disabled) return;
+    if (mergedDisabled.value) return;
+
+    popupZIndex.value = zIndex.value + ++autoCompletePopupSequence;
 
     // 先计算位置，再打开下拉，避免动画从 (0,0) 开始
     updatePosition();
@@ -202,6 +319,8 @@ const openDropdown = () => {
     emit("dropdownVisibleChange", true);
 
     nextTick(() => {
+        // 已有面板时按真实高度校正；延迟挂载由 dropdownRef 监听补齐。
+        updatePosition();
         // 默认高亮第一个选项
         if (props.defaultActiveFirstOption && filteredOptions.value.length > 0) {
             activeIndex.value = 0;
@@ -216,11 +335,18 @@ const closeDropdown = () => {
     emit("update:open", false);
     emit("dropdownVisibleChange", false);
     activeIndex.value = -1;
+    // 面板还没渲染出来（加载提示延迟期间）就关闭，不会有离开动画来触发卸载，这里直接收掉 Teleport
+    if (filteredOptions.value.length === 0 && !showEmpty.value) {
+        shouldRenderTeleport.value = false;
+    }
 };
 
 // Transition 离开动画完成后移除 Teleport
 const handleAfterLeave = () => {
-    shouldRenderTeleport.value = false;
+    // 加载延迟可能暂时隐藏面板；仍打开时保留 Teleport，供结果到达后重新挂载。
+    if (!dropdownVisible.value) {
+        shouldRenderTeleport.value = false;
+    }
 };
 
 // ============ 事件处理 ============
@@ -257,8 +383,8 @@ const handleFocus = (e: FocusEvent) => {
         return;
     }
 
-    // 聚焦时打开下拉（如果有选项）
-    if (props.options.length > 0) {
+    // 聚焦时打开下拉：默认要有选项才弹；异步加载场景由 openOnFocus 放开，先弹出加载中 / 空状态
+    if (props.options.length > 0 || props.openOnFocus) {
         openDropdown();
     }
 };
@@ -286,7 +412,8 @@ const handleClear = () => {
 const handleSelect = (option: AutoCompleteOption) => {
     if (option.disabled) return;
 
-    const value = option.label ?? String(option.value);
+    // label 只负责下拉展示；选中后写回稳定的 value，避免业务标签混入表单数据。
+    const value = String(option.value);
 
     innerValue.value = value;
     emit("update:modelValue", value);
@@ -312,6 +439,8 @@ const handleOptionMouseEnter = (index: number) => {
 };
 
 const handleKeydown = (e: KeyboardEvent) => {
+    // 输入法组字时的上下键、回车用于选词和上屏，不拿来切换或选中候选项（判断同 Input 的 pressEnter）
+    if (e.isComposing || e.keyCode === 229) return;
     if (!dropdownVisible.value) {
         if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             openDropdown();
@@ -372,7 +501,7 @@ const navigateOptions = (direction: number) => {
     // backfill：将高亮选项回填到输入框
     const option = options[newIndex];
     if (props.backfill && option) {
-        innerValue.value = option.label ?? String(option.value);
+        innerValue.value = String(option.value);
         emit("update:modelValue", innerValue.value);
     }
 
@@ -402,8 +531,7 @@ const scrollToOption = (index: number) => {
 
 // ============ 点击外部关闭 ============
 const handleClickOutside = (e: MouseEvent) => {
-    const target = e.target as Node;
-    if (triggerRef.value?.contains(target) || dropdownRef.value?.contains(target)) {
+    if (isEventInside(e, triggerRef.value, dropdownRef.value)) {
         return;
     }
     closeDropdown();
@@ -424,6 +552,8 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+    clearLoadingDelayTimer();
+    stopDropdownResizeObserver();
     document.removeEventListener("click", handleClickOutside);
     window.removeEventListener("scroll", handleScroll, true);
     window.removeEventListener("resize", handleScroll);
@@ -449,8 +579,17 @@ const getItemClasses = (index: number, option: AutoCompleteOption) => {
 defineExpose({
     /** 聚焦输入框 */
     focus: () => inputRef.value?.focus(),
-    /** 失焦输入框 */
-    blur: () => inputRef.value?.blur(),
+    /** 失焦输入框并收起下拉 */
+    blur: () => {
+        closeDropdown();
+        inputRef.value?.blur();
+    },
+    /** 关闭下拉菜单 */
+    close: closeDropdown,
+    closeDropdown,
+    /** 打开下拉菜单 */
+    open: openDropdown,
+    openDropdown,
     /** 获取输入框元素 */
     input: inputRef
 });
@@ -465,8 +604,8 @@ defineExpose({
             :placeholder="resolvedPlaceholder"
             :size="size"
             :status="status"
-            :disabled="disabled"
-            :bordered="bordered"
+            :disabled="mergedDisabled"
+            :variant="mergedVariant"
             :allow-clear="allowClear"
             @input="handleInput"
             @focus="handleFocus"
@@ -493,8 +632,7 @@ defineExpose({
                         top: `${position.top}px`,
                         left: `${position.left}px`,
                         width: `${position.width}px`,
-                        zIndex: zIndex,
-                        transform: placement === 'top' ? 'translateY(-100%)' : 'none'
+                        zIndex: popupZIndex
                     }"
                 >
                     <div class="vort-auto-complete-list" :style="{ maxHeight: `${listHeight}px` }">
@@ -514,10 +652,10 @@ defineExpose({
                             </div>
                         </template>
 
-                        <!-- 空状态 -->
+                        <!-- 空状态 / 加载中 -->
                         <div v-else-if="showEmpty" class="vort-auto-complete-empty">
-                            <slot name="notFoundContent">
-                                {{ notFoundContent ?? acT("no_match") }}
+                            <slot name="notFoundContent" :loading="loading">
+                                {{ emptyText }}
                             </slot>
                         </div>
                     </div>

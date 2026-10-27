@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { CheckOutlined, CloseOutlined } from "@/components/vort/icons";
+import { CheckOutlined, CloseOutlined } from "../icons";
 
 defineOptions({ name: "VortSteps" });
 

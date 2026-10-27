@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted, useAttrs } from "vue";
-import { ClockCircleOutlined, CloseCircleFilled } from "@/components/vort/icons";
-import { Button as VortButton } from "@/components/vort/button";
-import { getVortPopupContainer, useZIndex } from "@/components/vort/composables";
-import { useLocale } from "@/components/vort/locale/useLocale";
+import { ClockCircleOutlined, CloseCircleFilled } from "../icons";
+import { Button as VortButton } from "../button";
+import { getVortPopupContainer, useZIndex } from "../composables";
+import { useLocale } from "../locale/useLocale";
+import { useFormDisabled } from "../form/useFormDisabled";
+import { useFormItemStatus } from "../form/useFormItemStatus";
+import { useFormVariant } from "../form/useFormVariant";
+import type { FormVariant } from "../form/types";
 
 defineOptions({ name: "VortTimePicker", inheritAttrs: false });
 
@@ -45,6 +49,8 @@ interface Props {
     disabledSeconds?: (selectedHour: number, selectedMinute: number) => number[];
     /** 校验状态 */
     status?: TimePickerStatus;
+    /** 形态变体；不传时依次回退 Form、ConfigProvider */
+    variant?: FormVariant;
     /** 控制弹层显示 */
     open?: boolean;
     /** 菜单渲染父节点 */
@@ -67,7 +73,6 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
     size: "middle",
-    disabled: false,
     placeholder: undefined,
     format: "HH:mm:ss",
     allowClear: true,
@@ -80,6 +85,10 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const actualPlaceholder = computed(() => props.placeholder ?? tpT("placeholder"));
+
+const mergedDisabled = useFormDisabled(() => props.disabled);
+const mergedStatus = useFormItemStatus(() => props.status);
+const mergedVariant = useFormVariant(() => props.variant);
 
 const emit = defineEmits<{
     "update:modelValue": [value: Date | string | null];
@@ -174,12 +183,14 @@ const triggerClasses = computed(() => {
     const classes = ["vort-timepicker-trigger"];
     // 尺寸
     classes.push(`vort-timepicker-trigger-${props.size}`);
+    // 形态变体
+    classes.push(`vort-timepicker-trigger-${mergedVariant.value}`);
     // 状态
-    if (props.status) classes.push(`vort-timepicker-trigger-${props.status}`);
+    if (mergedStatus.value) classes.push(`vort-timepicker-trigger-${mergedStatus.value}`);
     // focus / open
     if (isFocused.value || isOpen.value) classes.push("vort-timepicker-trigger-focused");
     // 禁用
-    if (props.disabled) classes.push("vort-timepicker-trigger-disabled");
+    if (mergedDisabled.value) classes.push("vort-timepicker-trigger-disabled");
     // 自定义
     if (props.class) classes.push(props.class);
     return classes;
@@ -197,7 +208,7 @@ const iconSizeClass = computed(() => {
 
 // 是否显示清除按钮
 const showClearButton = computed(() => {
-    return props.allowClear && !props.disabled && selectedTime.value && isHovered.value;
+    return props.allowClear && !mergedDisabled.value && selectedTime.value && isHovered.value;
 });
 
 // ============ 面板定位 ============
@@ -303,7 +314,7 @@ const seconds = computed(() => {
 
 // ============ 面板控制 ============
 const openPanel = () => {
-    if (props.disabled) return;
+    if (mergedDisabled.value) return;
     shouldRenderTeleport.value = true; // 先渲染 Teleport
     isOpen.value = true;
     emit("update:open", true);
@@ -622,112 +633,119 @@ defineExpose({
                 <CloseCircleFilled :class="iconSizeClass" />
             </span>
         </span>
+
+        <!-- 时间面板：Teleport 放在根元素内，根节点保持单个元素，父组件 scoped 样式才能落到触发器上 -->
+        <Teleport v-if="shouldRenderTeleport" :to="popupContainer">
+            <Transition name="vort-timepicker" appear @after-leave="handleAfterLeave">
+                <div v-if="isOpen" ref="panelRef" class="vort-timepicker-panel" :style="{ ...panelStyle, '--transform-origin': transformOrigin }">
+                    <!-- 时间选择区域 -->
+                    <div class="vort-timepicker-content">
+                        <!-- 小时列 -->
+                        <div ref="hourColumnRef" class="vort-timepicker-column">
+                            <ul class="vort-timepicker-column-inner">
+                                <li
+                                    v-for="hour in hours"
+                                    :key="hour"
+                                    :class="[
+                                        'vort-timepicker-cell',
+                                        selectedHour === hour && 'vort-timepicker-cell-selected',
+                                        isHourDisabled(hour) && 'vort-timepicker-cell-disabled'
+                                    ]"
+                                    @click="!isHourDisabled(hour) && selectHour(hour)"
+                                >
+                                    {{ String(hour).padStart(2, "0") }}
+                                </li>
+                            </ul>
+                        </div>
+
+                        <!-- 分钟列 -->
+                        <div ref="minuteColumnRef" class="vort-timepicker-column">
+                            <ul class="vort-timepicker-column-inner">
+                                <li
+                                    v-for="minute in minutes"
+                                    :key="minute"
+                                    :class="[
+                                        'vort-timepicker-cell',
+                                        selectedMinute === minute && 'vort-timepicker-cell-selected',
+                                        isMinuteDisabled(minute) && 'vort-timepicker-cell-disabled'
+                                    ]"
+                                    @click="!isMinuteDisabled(minute) && selectMinute(minute)"
+                                >
+                                    {{ String(minute).padStart(2, "0") }}
+                                </li>
+                            </ul>
+                        </div>
+
+                        <!-- 秒列 -->
+                        <div v-if="showSecond" ref="secondColumnRef" class="vort-timepicker-column">
+                            <ul class="vort-timepicker-column-inner">
+                                <li
+                                    v-for="second in seconds"
+                                    :key="second"
+                                    :class="[
+                                        'vort-timepicker-cell',
+                                        selectedSecond === second && 'vort-timepicker-cell-selected',
+                                        isSecondDisabled(second) && 'vort-timepicker-cell-disabled'
+                                    ]"
+                                    @click="!isSecondDisabled(second) && selectSecond(second)"
+                                >
+                                    {{ String(second).padStart(2, "0") }}
+                                </li>
+                            </ul>
+                        </div>
+
+                        <!-- AM/PM 列（12小时制） -->
+                        <div v-if="use12Hours" ref="periodColumnRef" class="vort-timepicker-column">
+                            <ul class="vort-timepicker-column-inner">
+                                <li :class="['vort-timepicker-cell', selectedPeriod === 'AM' && 'vort-timepicker-cell-selected']" @click="selectPeriod('AM')">
+                                    AM
+                                </li>
+                                <li :class="['vort-timepicker-cell', selectedPeriod === 'PM' && 'vort-timepicker-cell-selected']" @click="selectPeriod('PM')">
+                                    PM
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- 底部操作区 -->
+                    <div class="vort-timepicker-footer">
+                        <VortButton v-if="showNow" variant="text" size="small" @click="selectNow">{{ tpT("now") }}</VortButton>
+                        <VortButton variant="primary" size="small" @click="confirmSelection">{{ tpT("ok") }}</VortButton>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
     </div>
-
-    <!-- 时间面板 -->
-    <Teleport v-if="shouldRenderTeleport" :to="popupContainer">
-        <Transition name="vort-timepicker" appear @after-leave="handleAfterLeave">
-            <div v-if="isOpen" ref="panelRef" class="vort-timepicker-panel" :style="{ ...panelStyle, '--transform-origin': transformOrigin }">
-                <!-- 时间选择区域 -->
-                <div class="vort-timepicker-content">
-                    <!-- 小时列 -->
-                    <div ref="hourColumnRef" class="vort-timepicker-column">
-                        <ul class="vort-timepicker-column-inner">
-                            <li
-                                v-for="hour in hours"
-                                :key="hour"
-                                :class="[
-                                    'vort-timepicker-cell',
-                                    selectedHour === hour && 'vort-timepicker-cell-selected',
-                                    isHourDisabled(hour) && 'vort-timepicker-cell-disabled'
-                                ]"
-                                @click="!isHourDisabled(hour) && selectHour(hour)"
-                            >
-                                {{ String(hour).padStart(2, "0") }}
-                            </li>
-                        </ul>
-                    </div>
-
-                    <!-- 分钟列 -->
-                    <div ref="minuteColumnRef" class="vort-timepicker-column">
-                        <ul class="vort-timepicker-column-inner">
-                            <li
-                                v-for="minute in minutes"
-                                :key="minute"
-                                :class="[
-                                    'vort-timepicker-cell',
-                                    selectedMinute === minute && 'vort-timepicker-cell-selected',
-                                    isMinuteDisabled(minute) && 'vort-timepicker-cell-disabled'
-                                ]"
-                                @click="!isMinuteDisabled(minute) && selectMinute(minute)"
-                            >
-                                {{ String(minute).padStart(2, "0") }}
-                            </li>
-                        </ul>
-                    </div>
-
-                    <!-- 秒列 -->
-                    <div v-if="showSecond" ref="secondColumnRef" class="vort-timepicker-column">
-                        <ul class="vort-timepicker-column-inner">
-                            <li
-                                v-for="second in seconds"
-                                :key="second"
-                                :class="[
-                                    'vort-timepicker-cell',
-                                    selectedSecond === second && 'vort-timepicker-cell-selected',
-                                    isSecondDisabled(second) && 'vort-timepicker-cell-disabled'
-                                ]"
-                                @click="!isSecondDisabled(second) && selectSecond(second)"
-                            >
-                                {{ String(second).padStart(2, "0") }}
-                            </li>
-                        </ul>
-                    </div>
-
-                    <!-- AM/PM 列（12小时制） -->
-                    <div v-if="use12Hours" ref="periodColumnRef" class="vort-timepicker-column">
-                        <ul class="vort-timepicker-column-inner">
-                            <li :class="['vort-timepicker-cell', selectedPeriod === 'AM' && 'vort-timepicker-cell-selected']" @click="selectPeriod('AM')">
-                                AM
-                            </li>
-                            <li :class="['vort-timepicker-cell', selectedPeriod === 'PM' && 'vort-timepicker-cell-selected']" @click="selectPeriod('PM')">
-                                PM
-                            </li>
-                        </ul>
-                    </div>
-                </div>
-
-                <!-- 底部操作区 -->
-                <div class="vort-timepicker-footer">
-                    <VortButton v-if="showNow" variant="text" size="small" @click="selectNow">{{ tpT("now") }}</VortButton>
-                    <VortButton variant="primary" size="small" @click="confirmSelection">{{ tpT("ok") }}</VortButton>
-                </div>
-            </div>
-        </Transition>
-    </Teleport>
 </template>
 
 <style scoped>
 /* ============ 触发器样式 ============ */
 .vort-timepicker-trigger {
+    --_border-color: var(--vort-border, #d9d9d9);
+    --_hover-color: var(--vort-primary-hover);
+    --_focus-color: var(--vort-primary, #1456f0);
+    --_focus-shadow: var(--vort-primary-shadow, rgba(20, 86, 240, 0.1));
+    --_bg-color: #fff;
+
     position: relative;
     display: inline-flex;
     align-items: center;
     width: 100%;
-    background: #fff;
-    border: 1px solid var(--vort-border);
+    background: var(--_bg-color);
+    border: 1px solid var(--_border-color);
     border-radius: var(--vort-border-radius, 6px);
     transition: all var(--vort-duration-normal, 200ms);
     cursor: pointer;
 }
 
-.vort-timepicker-trigger:not(.vort-timepicker-trigger-disabled):hover {
-    border-color: var(--vort-primary-hover);
+.vort-timepicker-trigger:hover:not(.vort-timepicker-trigger-disabled) {
+    border-color: var(--_hover-color);
 }
 
-.vort-timepicker-trigger-focused {
-    border-color: var(--vort-primary) !important;
-    box-shadow: 0 0 0 2px var(--vort-primary-shadow, rgba(20, 86, 240, 0.1));
+/* 与 hover 同为 0,3,0 且声明在后，保证聚焦色压过悬停色 */
+.vort-timepicker-trigger.vort-timepicker-trigger-focused:not(.vort-timepicker-trigger-disabled) {
+    border-color: var(--_focus-color);
+    box-shadow: 0 0 0 2px var(--_focus-shadow);
 }
 
 /* 尺寸 */
@@ -751,26 +769,118 @@ defineExpose({
 
 /* 状态 */
 .vort-timepicker-trigger-error {
-    border-color: var(--vort-error) !important;
-}
-
-.vort-timepicker-trigger-error:hover {
-    border-color: var(--vort-error) !important;
+    --_border-color: var(--vort-error, #ff4d4f);
+    --_hover-color: var(--vort-error, #ff4d4f);
+    --_focus-color: var(--vort-error, #ff4d4f);
+    --_focus-shadow: rgba(255, 77, 79, 0.06);
 }
 
 .vort-timepicker-trigger-warning {
-    border-color: var(--vort-warning) !important;
-}
-
-.vort-timepicker-trigger-warning:hover {
-    border-color: var(--vort-warning) !important;
+    --_border-color: var(--vort-warning, #faad14);
+    --_hover-color: var(--vort-warning, #faad14);
+    --_focus-color: var(--vort-warning, #faad14);
+    --_focus-shadow: rgba(250, 173, 20, 0.1);
 }
 
 /* 禁用 */
 .vort-timepicker-trigger-disabled {
-    background: rgba(0, 0, 0, 0.04);
+    --_bg-color: rgba(0, 0, 0, 0.04);
     color: var(--vort-text-quaternary);
     cursor: not-allowed;
+}
+
+/* ============ 形态变体 ============ */
+.vort-timepicker-trigger-outlined {
+    border: 1px solid var(--_border-color);
+    background: var(--_bg-color);
+}
+
+.vort-timepicker-trigger-filled {
+    --_bg-color: rgba(0, 0, 0, 0.04);
+    border: 1px solid transparent;
+}
+
+.vort-timepicker-trigger-filled:hover:not(.vort-timepicker-trigger-disabled) {
+    --_bg-color: rgba(0, 0, 0, 0.06);
+    border-color: transparent;
+}
+
+.vort-timepicker-trigger-filled.vort-timepicker-trigger-focused:not(.vort-timepicker-trigger-disabled) {
+    --_bg-color: #fff;
+    border-color: var(--_focus-color);
+    box-shadow: none;
+}
+
+/* Filled + Error/Warning：状态色浅底，不显示边框，聚焦时白底 + 状态色边框（对齐 antd） */
+.vort-timepicker-trigger-filled.vort-timepicker-trigger-error:not(.vort-timepicker-trigger-disabled) {
+    --_bg-color: var(--vort-error-bg, #fff2f0);
+}
+
+.vort-timepicker-trigger-filled.vort-timepicker-trigger-warning:not(.vort-timepicker-trigger-disabled) {
+    --_bg-color: var(--vort-warning-bg, #fffbe6);
+}
+
+.vort-timepicker-trigger-filled.vort-timepicker-trigger-error:hover:not(.vort-timepicker-trigger-disabled) {
+    --_bg-color: var(--vort-error-bg-hover, #fff1f0);
+}
+
+.vort-timepicker-trigger-filled.vort-timepicker-trigger-warning:hover:not(.vort-timepicker-trigger-disabled) {
+    --_bg-color: var(--vort-warning-bg-hover, #fff1b8);
+}
+
+.vort-timepicker-trigger-filled.vort-timepicker-trigger-error.vort-timepicker-trigger-focused:not(.vort-timepicker-trigger-disabled),
+.vort-timepicker-trigger-filled.vort-timepicker-trigger-warning.vort-timepicker-trigger-focused:not(.vort-timepicker-trigger-disabled) {
+    --_bg-color: #fff;
+}
+
+.vort-timepicker-trigger-borderless {
+    border: 1px solid transparent;
+    background: transparent;
+}
+
+.vort-timepicker-trigger-borderless:hover:not(.vort-timepicker-trigger-disabled) {
+    border-color: transparent;
+}
+
+/* 聚焦时显示 1px 边框，颜色随状态；鼠标点击与键盘聚焦都显示 */
+.vort-timepicker-trigger-borderless.vort-timepicker-trigger-focused:not(.vort-timepicker-trigger-disabled) {
+    background: transparent;
+    border-color: var(--_focus-color);
+    box-shadow: none;
+}
+
+/* Filled / Borderless 没有常显的状态边框，用状态色文字提示 */
+.vort-timepicker-trigger-filled.vort-timepicker-trigger-error:not(.vort-timepicker-trigger-disabled) .vort-timepicker-display-filled,
+.vort-timepicker-trigger-borderless.vort-timepicker-trigger-error:not(.vort-timepicker-trigger-disabled) .vort-timepicker-display-filled {
+    color: var(--vort-error, #ff4d4f);
+}
+
+.vort-timepicker-trigger-filled.vort-timepicker-trigger-warning:not(.vort-timepicker-trigger-disabled) .vort-timepicker-display-filled,
+.vort-timepicker-trigger-borderless.vort-timepicker-trigger-warning:not(.vort-timepicker-trigger-disabled) .vort-timepicker-display-filled {
+    color: var(--vort-warning, #faad14);
+}
+
+/* 四边保留 1px 透明边框、只给底边着色：切换形态时盒子尺寸不变，也不会从 border: none 的默认粗黑边过渡出来 */
+.vort-timepicker-trigger-underlined {
+    border: 1px solid transparent;
+    border-bottom-color: var(--_border-color);
+    border-radius: 0;
+    background: transparent;
+}
+
+.vort-timepicker-trigger-underlined:hover:not(.vort-timepicker-trigger-disabled) {
+    border-color: transparent;
+    border-bottom-color: var(--_hover-color);
+}
+
+.vort-timepicker-trigger-underlined.vort-timepicker-trigger-focused:not(.vort-timepicker-trigger-disabled) {
+    border-color: transparent;
+    border-bottom-color: var(--_focus-color);
+    box-shadow: none;
+}
+
+.vort-timepicker-trigger-disabled .vort-timepicker-display-filled {
+    color: var(--vort-text-quaternary);
 }
 
 /* 前缀图标 */

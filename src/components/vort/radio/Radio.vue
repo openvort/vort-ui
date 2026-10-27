@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, type Ref } from "vue";
+import { useFormDisabled } from "../form/useFormDisabled";
 
 defineOptions({ name: "VortRadio" });
 
@@ -16,9 +17,7 @@ interface Props {
     class?: string;
 }
 
-const props = withDefaults(defineProps<Props>(), {
-    disabled: false
-});
+const props = defineProps<Props>();
 
 const emit = defineEmits<{
     "update:checked": [checked: boolean];
@@ -44,13 +43,11 @@ const isChecked = computed(() => {
     return props.checked;
 });
 
-// 是否禁用
-const isDisabled = computed(() => {
-    if (radioGroupContext) {
-        return radioGroupContext.disabled.value || props.disabled;
-    }
-    return props.disabled;
-});
+// disabled 合并：自身 prop > Group disabled > Form 级 disabled > false
+const isDisabled = useFormDisabled(
+    () => props.disabled,
+    () => radioGroupContext?.disabled.value
+);
 
 // 尺寸
 const size = computed(() => {

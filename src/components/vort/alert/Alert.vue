@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, useSlots, type SlotsType } from "vue";
-import { CheckCircleFilled, InfoCircleFilled, ExclamationCircleFilled, CloseCircleFilled, CloseOutlined } from "@/components/vort/icons";
-import { useLocale } from "@/components/vort/locale/useLocale";
+import { CheckCircleFilled, InfoCircleFilled, ExclamationCircleFilled, CloseCircleFilled, CloseOutlined } from "../icons";
+import { useLocale } from "../locale/useLocale";
 
 defineOptions({ name: "VortAlert" });
 
@@ -249,14 +249,24 @@ const onAfterLeave = () => {
 /* ========================================
    图标
    ======================================== */
+/*
+ * 图标对齐消息的第一行，不随多行文字整体居中：图标盒子撑成一行的高度（14px × 1.5714 ≈ 22px），
+ * 图标在盒内居中，盒子本身贴容器顶部。单行消息时与整体居中没有差别；换行后图标停在首行。
+ */
 .vort-alert-icon {
     flex-shrink: 0;
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    height: 22px;
     margin-right: 8px;
     font-size: 14px;
     line-height: 1;
 }
 
+/* 有描述时对齐标题行：16px × 1.5714 ≈ 25px */
 .vort-alert-with-description .vort-alert-icon {
+    height: 25px;
     margin-right: 12px;
     font-size: 24px;
 }

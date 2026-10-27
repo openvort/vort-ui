@@ -46,7 +46,9 @@ const enUS: Locale = {
         upload_text: "Click to upload",
         drag_text: "Click or drag file to this area to upload",
         remove_file: "Remove file",
-        preview_file: "Preview file"
+        preview_file: "Preview file",
+        upload_failed: "Upload failed. Please try again later.",
+        network_failed: "Upload failed. Please check your connection and try again."
     },
 
     Select: {
@@ -101,7 +103,9 @@ const enUS: Locale = {
         min_length: "Length cannot be less than {min}",
         max_length: "Length cannot be greater than {max}",
         pattern: "Invalid format",
-        optional: "(Optional)"
+        optional: "(Optional)",
+        tooltip_label: "View help for {label}",
+        tooltip_label_default: "View help"
     },
 
     Cascader: {
@@ -111,7 +115,8 @@ const enUS: Locale = {
 
     AutoComplete: {
         placeholder: "Please enter",
-        no_match: "No matching results"
+        no_match: "No matching results",
+        loading: "Loading..."
     },
 
     InputPassword: {
@@ -121,6 +126,13 @@ const enUS: Locale = {
 
     Alert: {
         close: "Close"
+    },
+
+    Result: {
+        error: "Failed to load",
+        forbidden: "No access permission",
+        not_found: "Content not found",
+        empty: "No data"
     }
 };
 

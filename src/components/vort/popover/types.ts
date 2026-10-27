@@ -4,18 +4,7 @@
 
 /** 气泡框位置 */
 export type PopoverPlacement =
-    | "top"
-    | "topLeft"
-    | "topRight"
-    | "bottom"
-    | "bottomLeft"
-    | "bottomRight"
-    | "left"
-    | "leftTop"
-    | "leftBottom"
-    | "right"
-    | "rightTop"
-    | "rightBottom";
+    "top" | "topLeft" | "topRight" | "bottom" | "bottomLeft" | "bottomRight" | "left" | "leftTop" | "leftBottom" | "right" | "rightTop" | "rightBottom";
 
 /** 触发方式 */
 export type PopoverTrigger = "click" | "hover" | "focus" | "contextMenu" | "manual";
@@ -32,6 +21,8 @@ export interface PopoverProps {
     trigger?: PopoverTrigger;
     /** 是否显示箭头 */
     arrow?: boolean;
+    /** 浮层边缘与触发元素的间距 (px)，包含箭头占用的空间，默认 14 */
+    offset?: number;
     /** 控制浮层显示（受控模式） */
     open?: boolean;
     /** 是否禁用 */

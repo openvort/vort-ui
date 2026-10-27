@@ -143,21 +143,24 @@
        层级
        ===================================================== */
     --vort-z-index-base: 0;
-    --vort-z-index-popup: 1000;
+    --vort-z-index-popup: 100;
+    --vort-z-index-dropdown: 100;
+    --vort-z-index-tooltip: 120;
     --vort-z-index-modal: 1000;
     --vort-z-index-drawer: 1000;
-    --vort-z-index-dropdown: 1050;
-    --vort-z-index-tooltip: 1070;
-    --vort-z-index-message: 1090;
+    --vort-z-index-confirm: 2000;
+    --vort-z-index-message: 3000;
+    --vort-z-index-notification: 3100;
 
     /* =====================================================
        组件特定变量（可通过 ConfigProvider 覆盖）
        ===================================================== */
     /* Form */
     --vort-form-extra-color: rgba(0, 0, 0, 0.35);
+    --vort-form-extra-font-size: 12px;
 
     /* Table */
-    --vort-table-header-bg: #fafafa;
+    --vort-table-header-bg: #f7f8fa;
     --vort-table-row-hover-bg: #fafafa;
     --vort-table-actions-gap: 8px;
 }

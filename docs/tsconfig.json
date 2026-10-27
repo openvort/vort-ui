@@ -1,0 +1,15 @@
+{
+    "extends": "../tsconfig.json",
+    "compilerOptions": {
+        "baseUrl": ".",
+        "paths": {
+            "@docs/*": ["./src/*"],
+            "@openvort/vort-ui": ["../src/index.ts"],
+            "@openvort/vort-ui/*": ["../src/*"]
+        },
+        "noEmit": true,
+        "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.docs.tsbuildinfo"
+    },
+    "include": ["env.d.ts", "src/**/*", "vite.config.ts"],
+    "exclude": ["node_modules", "dist", "docs-dist", "**/*.test.*", "**/*.spec.*", "**/__tests__/**", "**/tests/**", "**/test/**"]
+}

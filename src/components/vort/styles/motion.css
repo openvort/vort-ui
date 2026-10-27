@@ -356,7 +356,7 @@
    点击波纹动画（Ant Design Wave Effect）
    用于：Button、Checkbox、Radio、Switch 等可点击组件
    参考：https://github.com/ant-design/ant-design/blob/master/components/_util/wave/style.ts
-   
+
    设计要点：
    - box-shadow 扩散 0.4s
    - opacity 淡出 2s（比 box-shadow 慢 5 倍，让消失更柔和）

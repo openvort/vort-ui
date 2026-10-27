@@ -1,4 +1,6 @@
 <script lang="ts">
+import type { FormVariant } from "../form/types";
+
 // ============ 导出类型 ============
 export interface CascaderOption {
     /** 选项值 */
@@ -42,6 +44,8 @@ interface Props {
     disabled?: boolean;
     /** 设置校验状态 */
     status?: CascaderStatus;
+    /** 形态变体；不传时依次回退 Form、ConfigProvider */
+    variant?: FormVariant;
     /** 自定义类名 */
     class?: string;
     /** 是否支持多选 */
@@ -87,10 +91,13 @@ export type { Props as CascaderProps };
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { CloseCircleFilled, CloseOutlined, DownOutlined, RightOutlined } from "@/components/vort/icons";
-import { Checkbox } from "@/components/vort/checkbox";
-import { getVortPopupContainer, useZIndex } from "@/components/vort/composables";
-import { useLocale } from "@/components/vort/locale/useLocale";
+import { CloseCircleFilled, CloseOutlined, DownOutlined, RightOutlined } from "../icons";
+import { Checkbox } from "../checkbox";
+import { getVortPopupContainer, isEventInside, useZIndex } from "../composables";
+import { useLocale } from "../locale/useLocale";
+import { useFormDisabled } from "../form/useFormDisabled";
+import { useFormItemStatus } from "../form/useFormItemStatus";
+import { useFormVariant } from "../form/useFormVariant";
 
 defineOptions({ name: "VortCascader" });
 
@@ -106,7 +113,6 @@ const props = withDefaults(defineProps<Props>(), {
     options: () => [],
     placeholder: undefined,
     size: "middle",
-    disabled: false,
     status: undefined,
     multiple: false,
     showSearch: false,
@@ -127,6 +133,10 @@ const props = withDefaults(defineProps<Props>(), {
 
 const placeholder = computed(() => props.placeholder ?? casT("placeholder"));
 const notFoundContent = computed(() => props.notFoundContent ?? casT("no_data"));
+
+const mergedDisabled = useFormDisabled(() => props.disabled);
+const mergedStatus = useFormItemStatus(() => props.status);
+const mergedVariant = useFormVariant(() => props.variant);
 
 const emit = defineEmits<{
     "update:modelValue": [value: CascaderValue | CascaderMultipleValue | undefined];
@@ -160,9 +170,17 @@ let adjustRafId = 0;
 const expandedPath = ref<(string | number)[]>([]);
 // 临时选择路径（用于追踪当前悬停/点击路径）
 const hoverPath = ref<(string | number)[]>([]);
+/**
+ * 面板实际展示的路径：悬停展开时以悬停路径为准。
+ * 点击、复选都要按它取父级，否则在 hover 模式下点到的子项会拼到上次点击的旧父级后面。
+ */
+const activePath = computed(() => (hoverPath.value.length > 0 ? hoverPath.value : expandedPath.value));
 
 // 下拉框位置
 const dropdownPosition = ref({ top: 0, left: 0, width: 0 });
+
+// 空状态没有列宽支撑，面板会收缩到只剩文案宽度，因此对齐触发器宽度
+const emptyStyle = computed(() => ({ minWidth: `${dropdownPosition.value.width}px` }));
 
 // ============ 字段名映射 ============
 const labelField = computed(() => props.fieldNames.label || "label");
@@ -453,7 +471,7 @@ const showPlaceholder = computed(() => {
 
 // 是否显示清除按钮
 const showClearButton = computed(() => {
-    if (!props.allowClear || props.disabled) return false;
+    if (!props.allowClear || mergedDisabled.value) return false;
     if (props.multiple) {
         return selectedTags.value.length > 0;
     }
@@ -466,24 +484,24 @@ const isClearButtonVisible = computed(() => showClearButton.value && isHovered.v
 const getColumnsOptions = computed(() => {
     const columns: { options: CascaderOption[]; selectedValue: string | number | undefined }[] = [];
     let currentOptions = props.options;
-    const activePath = hoverPath.value.length > 0 ? hoverPath.value : expandedPath.value;
+    const path = activePath.value;
 
     // 第一列：根选项
     columns.push({
         options: currentOptions,
-        selectedValue: activePath[0]
+        selectedValue: path[0]
     });
 
     // 根据当前路径生成后续列
-    for (let i = 0; i < activePath.length; i++) {
-        const value = activePath[i];
+    for (let i = 0; i < path.length; i++) {
+        const value = path[i];
         const found = currentOptions.find((opt) => getOptionValue(opt) === value);
         if (found) {
             const children = getOptionChildren(found);
             if (children && children.length > 0) {
                 columns.push({
                     options: children,
-                    selectedValue: activePath[i + 1]
+                    selectedValue: path[i + 1]
                 });
                 currentOptions = children;
             }
@@ -533,11 +551,11 @@ const filteredSearchOptions = computed(() => {
 
 /** 触发器类名 */
 const triggerClasses = computed(() => {
-    const classes = ["vort-cascader-selector", `vort-cascader-${props.size}`];
+    const classes = ["vort-cascader-selector", `vort-cascader-${props.size}`, `vort-cascader-${mergedVariant.value}`];
 
     if (props.multiple) classes.push("vort-cascader-multiple");
-    if (props.status) classes.push(`vort-cascader-${props.status}`);
-    if (props.disabled) classes.push("vort-cascader-selector-disabled");
+    if (mergedStatus.value) classes.push(`vort-cascader-${mergedStatus.value}`);
+    if (mergedDisabled.value) classes.push("vort-cascader-selector-disabled");
     if (isFocused.value || isOpen.value) classes.push("vort-cascader-focused");
     if (props.class) classes.push(props.class);
 
@@ -627,7 +645,7 @@ const scheduleAdjustDropdown = () => {
 
 // 打开/关闭下拉框
 const openDropdown = () => {
-    if (props.disabled) return;
+    if (mergedDisabled.value) return;
     if (!shouldRenderTeleport.value) {
         shouldRenderTeleport.value = true; // 首次打开时渲染 Teleport
     }
@@ -713,7 +731,7 @@ const handleOptionClick = (option: CascaderOption, columnIndex: number) => {
 
     const value = getOptionValue(option);
     const children = getOptionChildren(option);
-    const newPath = [...expandedPath.value.slice(0, columnIndex), value];
+    const newPath = [...activePath.value.slice(0, columnIndex), value];
     const expandedTargetPath = props.multiple && !props.selectOnItemClickInMultiple ? buildDeepestExpandedPath(newPath) : newPath;
 
     // 如果是 hover 展开模式，点击时更新 expandedPath
@@ -875,7 +893,7 @@ const getDirectoryCheckState = (option: CascaderOption, parentPath: CascaderValu
 
 // 删除标签 - 使用缓存优化
 const handleRemoveTag = (tag: { path: CascaderValue; labels: string[]; options: CascaderOption[] }) => {
-    if (props.disabled) return;
+    if (mergedDisabled.value) return;
 
     // 获取要删除的路径对应的所有叶子节点键
     const pathKey = tag.path.join(",");
@@ -924,8 +942,7 @@ const handleSearchOptionClick = (item: { path: CascaderValue; labels: string[]; 
 // 点击外部关闭
 const handleClickOutside = (e: MouseEvent) => {
     if (!isOpen.value) return;
-    const target = e.target as Node;
-    if (triggerRef.value?.contains(target) || dropdownRef.value?.contains(target)) {
+    if (isEventInside(e, triggerRef.value, dropdownRef.value)) {
         return;
     }
     closeDropdown();
@@ -1014,7 +1031,7 @@ defineExpose({
 </script>
 
 <template>
-    <div class="vort-cascader" :class="{ 'vort-cascader-disabled': disabled }">
+    <div class="vort-cascader" :class="{ 'vort-cascader-disabled': mergedDisabled }">
         <!-- 触发器 -->
         <div
             ref="triggerRef"
@@ -1042,7 +1059,7 @@ defineExpose({
                     <!-- 已选标签 -->
                     <span v-for="tag in displayedTags" :key="tag.path.join(',')" :class="tagClasses">
                         <span class="vort-cascader-tag-text">{{ tag.labels.join(" / ") }}</span>
-                        <span v-if="!disabled" class="vort-cascader-tag-remove" @click.stop="handleRemoveTag(tag)">
+                        <span v-if="!mergedDisabled" class="vort-cascader-tag-remove" @click.stop="handleRemoveTag(tag)">
                             <CloseOutlined class="vort-cascader-tag-remove-icon" />
                         </span>
                     </span>
@@ -1058,7 +1075,7 @@ defineExpose({
                         ref="inputRef"
                         :value="searchValue"
                         :placeholder="showPlaceholder ? placeholder : ''"
-                        :disabled="disabled"
+                        :disabled="mergedDisabled"
                         class="vort-cascader-search-input"
                         @input="handleSearchInput"
                         @click.stop
@@ -1080,7 +1097,7 @@ defineExpose({
                         ref="inputRef"
                         :value="searchValue"
                         :placeholder="displayText || placeholder"
-                        :disabled="disabled"
+                        :disabled="mergedDisabled"
                         class="vort-cascader-search-input"
                         @input="handleSearchInput"
                         @click.stop
@@ -1129,7 +1146,7 @@ defineExpose({
                 >
                     <!-- 搜索模式下的结果列表 -->
                     <template v-if="searchValue && showSearch">
-                        <div v-if="filteredSearchOptions.length === 0" class="vort-cascader-empty">
+                        <div v-if="filteredSearchOptions.length === 0" class="vort-cascader-empty" :style="emptyStyle">
                             {{ notFoundContent }}
                         </div>
                         <div v-else class="vort-cascader-search-list" :style="{ maxHeight: `${listHeight}px` }">
@@ -1148,7 +1165,7 @@ defineExpose({
 
                     <!-- 级联面板 -->
                     <template v-else>
-                        <div v-if="options.length === 0" class="vort-cascader-empty">
+                        <div v-if="options.length === 0" class="vort-cascader-empty" :style="emptyStyle">
                             {{ notFoundContent }}
                         </div>
                         <div v-else class="vort-cascader-menus">
@@ -1172,11 +1189,11 @@ defineExpose({
                                     <!-- 多选复选框 -->
                                     <Checkbox
                                         v-if="multiple"
-                                        :checked="getDirectoryCheckState(option, expandedPath.slice(0, columnIndex)).checked"
-                                        :indeterminate="getDirectoryCheckState(option, expandedPath.slice(0, columnIndex)).indeterminate"
+                                        :checked="getDirectoryCheckState(option, activePath.slice(0, columnIndex)).checked"
+                                        :indeterminate="getDirectoryCheckState(option, activePath.slice(0, columnIndex)).indeterminate"
                                         :disabled="option.disabled"
                                         @click.stop
-                                        @change="selectDirectory(option, expandedPath.slice(0, columnIndex))"
+                                        @change="selectDirectory(option, activePath.slice(0, columnIndex))"
                                     />
 
                                     <span class="vort-cascader-menu-item-label">{{ getOptionLabel(option) }}</span>
@@ -1247,6 +1264,127 @@ defineExpose({
     --_bg-color: rgba(0, 0, 0, 0.04);
     color: var(--vort-text-quaternary, rgba(0, 0, 0, 0.25));
     cursor: not-allowed;
+}
+
+.vort-cascader-selector-disabled .vort-cascader-value {
+    color: var(--vort-text-quaternary, rgba(0, 0, 0, 0.25));
+}
+
+.vort-cascader-selector-disabled .vort-cascader-search-input {
+    color: var(--vort-text-quaternary, rgba(0, 0, 0, 0.25));
+    -webkit-text-fill-color: var(--vort-text-quaternary, rgba(0, 0, 0, 0.25));
+    cursor: not-allowed;
+}
+
+/* ========================================
+   形态变体 - Outlined（默认）
+   ======================================== */
+.vort-cascader-outlined {
+    border: 1px solid var(--_border-color);
+    background: var(--_bg-color);
+}
+
+/* ========================================
+   形态变体 - Filled
+   ======================================== */
+.vort-cascader-filled {
+    --_bg-color: rgba(0, 0, 0, 0.04);
+    border: 1px solid transparent;
+}
+
+.vort-cascader-filled:hover:not(.vort-cascader-selector-disabled) {
+    --_bg-color: rgba(0, 0, 0, 0.06);
+    border-color: transparent;
+}
+
+.vort-cascader-filled.vort-cascader-focused:not(.vort-cascader-selector-disabled) {
+    --_bg-color: #fff;
+    border-color: var(--_focus-color);
+    box-shadow: none;
+}
+
+/* Filled + Error/Warning：状态色浅底，不显示边框，聚焦时白底 + 状态色边框（对齐 antd） */
+.vort-cascader-filled.vort-cascader-error:not(.vort-cascader-selector-disabled) {
+    --_bg-color: var(--vort-error-bg, #fff2f0);
+}
+
+.vort-cascader-filled.vort-cascader-warning:not(.vort-cascader-selector-disabled) {
+    --_bg-color: var(--vort-warning-bg, #fffbe6);
+}
+
+.vort-cascader-filled.vort-cascader-error:hover:not(.vort-cascader-selector-disabled) {
+    --_bg-color: var(--vort-error-bg-hover, #fff1f0);
+}
+
+.vort-cascader-filled.vort-cascader-warning:hover:not(.vort-cascader-selector-disabled) {
+    --_bg-color: var(--vort-warning-bg-hover, #fff1b8);
+}
+
+.vort-cascader-filled.vort-cascader-error.vort-cascader-focused:not(.vort-cascader-selector-disabled),
+.vort-cascader-filled.vort-cascader-warning.vort-cascader-focused:not(.vort-cascader-selector-disabled) {
+    --_bg-color: #fff;
+}
+
+/* 填充底色上的多选标签改用白底细边，避免与底色融为一片 */
+.vort-cascader-filled .vort-cascader-tag {
+    background: #fff;
+    box-shadow: inset 0 0 0 1px rgba(5, 5, 5, 0.06);
+}
+
+/* ========================================
+   形态变体 - Borderless
+   ======================================== */
+.vort-cascader-borderless {
+    border: 1px solid transparent;
+    background: transparent;
+}
+
+.vort-cascader-borderless:hover:not(.vort-cascader-selector-disabled) {
+    border-color: transparent;
+}
+
+/* 聚焦时显示 1px 边框，颜色随状态；鼠标点击与键盘聚焦都显示 */
+.vort-cascader-borderless.vort-cascader-focused:not(.vort-cascader-selector-disabled) {
+    background: transparent;
+    border-color: var(--_focus-color);
+    box-shadow: none;
+}
+
+/* Filled / Borderless 没有常显的状态边框，用状态色文字提示 */
+.vort-cascader-filled.vort-cascader-error:not(.vort-cascader-selector-disabled) .vort-cascader-value,
+.vort-cascader-filled.vort-cascader-error:not(.vort-cascader-selector-disabled) .vort-cascader-search-input,
+.vort-cascader-borderless.vort-cascader-error:not(.vort-cascader-selector-disabled) .vort-cascader-value,
+.vort-cascader-borderless.vort-cascader-error:not(.vort-cascader-selector-disabled) .vort-cascader-search-input {
+    color: var(--vort-error, #ff4d4f);
+}
+
+.vort-cascader-filled.vort-cascader-warning:not(.vort-cascader-selector-disabled) .vort-cascader-value,
+.vort-cascader-filled.vort-cascader-warning:not(.vort-cascader-selector-disabled) .vort-cascader-search-input,
+.vort-cascader-borderless.vort-cascader-warning:not(.vort-cascader-selector-disabled) .vort-cascader-value,
+.vort-cascader-borderless.vort-cascader-warning:not(.vort-cascader-selector-disabled) .vort-cascader-search-input {
+    color: var(--vort-warning, #faad14);
+}
+
+/* ========================================
+   形态变体 - Underlined
+   ======================================== */
+/* 四边保留 1px 透明边框、只给底边着色：切换形态时盒子尺寸不变，也不会从 border: none 的默认粗黑边过渡出来 */
+.vort-cascader-underlined {
+    border: 1px solid transparent;
+    border-bottom-color: var(--_border-color);
+    border-radius: 0;
+    background: transparent;
+}
+
+.vort-cascader-underlined:hover:not(.vort-cascader-selector-disabled) {
+    border-color: transparent;
+    border-bottom-color: var(--_focus-color);
+}
+
+.vort-cascader-underlined.vort-cascader-focused:not(.vort-cascader-selector-disabled) {
+    border-color: transparent;
+    border-bottom-color: var(--_focus-color);
+    box-shadow: none;
 }
 
 /* 尺寸 */
@@ -1376,6 +1514,7 @@ defineExpose({
 
 .vort-cascader-search-input::placeholder {
     color: var(--vort-text-quaternary, rgba(0, 0, 0, 0.25));
+    -webkit-text-fill-color: currentColor;
 }
 
 .vort-cascader-placeholder {
@@ -1539,6 +1678,7 @@ defineExpose({
 }
 
 .vort-cascader-empty {
+    box-sizing: border-box;
     padding: 24px 12px;
     text-align: center;
     color: var(--vort-text-quaternary, rgba(0, 0, 0, 0.25));

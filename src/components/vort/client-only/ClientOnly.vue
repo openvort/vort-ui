@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useIsClient } from "@/components/vort/composables";
+import { useIsClient } from "../composables";
 
 defineOptions({ name: "VortClientOnly" });
 

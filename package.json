@@ -1,91 +1,105 @@
 {
-  "name": "@openvort/vort-ui",
-  "version": "1.3.0",
-  "description": "Vort UI - 融合 Ant Design 视觉与 Element Plus API 的 Vue 3 组件库",
-  "license": "MIT",
-  "private": false,
-  "type": "module",
-  "main": "./dist/vort-ui.es.js",
-  "module": "./dist/vort-ui.es.js",
-  "types": "./dist/index.d.ts",
-  "web-types": "./dist/web-types.json",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/vort-ui.es.js"
+    "name": "@openvort/vort-ui",
+    "version": "1.4.0",
+    "type": "module",
+    "description": "面向 Vue 3 的 Web 通用组件库，提供组件、主题、类型声明与自动导入支持。",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/openvort/vort-ui.git"
     },
-    "./styles": "./dist/style.css",
-    "./style.css": "./dist/style.css",
-    "./resolver": {
-      "types": "./dist/resolver.d.ts",
-      "import": "./dist/resolver.js"
+    "homepage": "https://vortui.com/components/",
+    "bugs": {
+        "url": "https://github.com/openvort/vort-ui/issues"
+    },
+    "keywords": [
+        "vue",
+        "vue3",
+        "components",
+        "vort-ui"
+    ],
+    "web-types": "./dist/web-types.json",
+    "main": "./src/index.ts",
+    "module": "./src/index.ts",
+    "types": "./src/index.ts",
+    "exports": {
+        ".": {
+            "types": "./src/index.ts",
+            "import": "./src/index.ts"
+        },
+        "./styles": "./src/styles/index.css",
+        "./style.css": "./src/styles/index.css",
+        "./resolver": {
+            "types": "./src/resolver.ts",
+            "import": "./src/resolver.ts"
+        }
+    },
+    "publishConfig": {
+        "access": "public",
+        "registry": "https://registry.npmjs.org",
+        "main": "./dist/vort-ui.es.js",
+        "module": "./dist/vort-ui.es.js",
+        "types": "./dist/index.d.ts",
+        "exports": {
+            ".": {
+                "types": "./dist/index.d.ts",
+                "import": "./dist/vort-ui.es.js"
+            },
+            "./styles": "./dist/style.css",
+            "./style.css": "./dist/style.css",
+            "./resolver": {
+                "types": "./dist/resolver.d.ts",
+                "import": "./dist/resolver.js"
+            }
+        }
+    },
+    "files": [
+        "dist",
+        "README.md",
+        "LICENSE",
+        "CHANGELOG.md"
+    ],
+    "scripts": {
+        "build": "pnpm build:lib && pnpm build:types && pnpm build:resolver && pnpm generate:web-types",
+        "generate:web-types": "node scripts/generate-web-types.mjs",
+        "build:lib": "vite build --config vite.config.lib.ts",
+        "build:types": "vue-tsc --declaration --emitDeclarationOnly --project tsconfig.build.json && node scripts/strip-style-imports.mjs",
+        "build:resolver": "vite build --config vite.config.resolver.ts",
+        "dev:docs": "vite --config docs/vite.config.ts",
+        "build:docs": "vite build --config docs/vite.config.ts",
+        "preview:docs": "vite preview --config docs/vite.config.ts",
+        "prepack": "pnpm build",
+        "type-check": "pnpm type-check:lib && pnpm type-check:docs",
+        "type-check:lib": "vue-tsc --noEmit --project tsconfig.json",
+        "type-check:docs": "vue-tsc --noEmit --project docs/tsconfig.json"
+    },
+    "peerDependencies": {
+        "vue": "^3.5.0",
+        "zod": "^3.25.0"
+    },
+    "dependencies": {
+        "@tanstack/vue-virtual": "^3.13.18",
+        "@vee-validate/zod": "^4.15.1",
+        "vee-validate": "^4.15.1",
+        "decimal.js": "10.6.0"
+    },
+    "devDependencies": {
+        "@types/node": "^24.10.1",
+        "@vitejs/plugin-vue": "^6.0.2",
+        "@vue/compiler-sfc": "^3.5.25",
+        "@vue/tsconfig": "^0.8.1",
+        "dayjs": "^1.11.20",
+        "lucide-vue-next": "^0.555.0",
+        "unplugin-vue-components": "^30.0.0",
+        "vite": "^7.2.4",
+        "vue": "3.5.25",
+        "vue-router": "^4.6.3",
+        "vue-tsc": "3.1.5",
+        "typescript": "catalog:",
+        "zod": "catalog:"
+    },
+    "packageManager": "pnpm@10.23.0",
+    "engines": {
+        "node": "^20.19.0 || >=22.12.0"
     }
-  },
-  "files": [
-    "dist/*.js",
-    "dist/*.d.ts",
-    "dist/*.css",
-    "dist/web-types.json",
-    "README.md",
-    "LICENSE"
-  ],
-  "homepage": "https://github.com/openvort/vort-ui",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/openvort/vort-ui.git"
-  },
-  "bugs": {
-    "url": "https://github.com/openvort/vort-ui/issues"
-  },
-  "keywords": [
-    "vue",
-    "vue3",
-    "component-library",
-    "ui-components",
-    "typescript",
-    "ant-design",
-    "element-plus",
-    "vite"
-  ],
-  "scripts": {
-    "dev": "vite",
-    "build": "pnpm build:lib && pnpm build:demo",
-    "build:lib": "vite build --config vite.config.lib.ts && pnpm build:resolver && pnpm generate:web-types",
-    "build:resolver": "node scripts/build-resolver.mjs",
-    "build:demo": "vite build",
-    "generate:web-types": "tsx scripts/generate-web-types.ts",
-    "preview": "vite preview",
-    "type-check": "vue-tsc --noEmit"
-  },
-  "peerDependencies": {
-    "vue": "^3.4.0"
-  },
-  "dependencies": {
-    "@tanstack/vue-virtual": "^3.13.18",
-    "@vee-validate/zod": "^4.15.1",
-    "@vueuse/core": "^14.2.0",
-    "clsx": "^2.1.0",
-    "dayjs": "^1.11.19",
-    "lucide-vue-next": "^0.400.0",
-    "reka-ui": "^2.8.0",
-    "tailwind-merge": "^2.5.0",
-    "vee-validate": "^4.15.1",
-    "vue": "^3.5.0",
-    "vue-router": "^4.4.0",
-    "zod": "^4.3.6"
-  },
-  "devDependencies": {
-    "@types/node": "^20.10.0",
-    "@vitejs/plugin-vue": "^5.0.0",
-    "@vue/tsconfig": "^0.8.0",
-    "autoprefixer": "^10.4.0",
-    "postcss": "^8.4.0",
-    "tailwindcss": "^3.4.0",
-    "tsx": "^4.7.0",
-    "typescript": "^5.5.0",
-    "unplugin-vue-components": "^31.0.0",
-    "vite": "^6.0.0",
-    "vite-plugin-dts": "^4.5.4",
-    "vue-tsc": "^2.0.0"
-  }
 }

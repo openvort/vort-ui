@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
-import { CheckCircleFilled, InfoCircleFilled, ExclamationCircleFilled, CloseCircleFilled, CloseOutlined } from "@/components/vort/icons";
-import LoadingOutlined from "@/components/vort/icons/LoadingOutlined.vue";
+import { CheckCircleFilled, InfoCircleFilled, ExclamationCircleFilled, CloseCircleFilled, CloseOutlined } from "../icons";
+import LoadingOutlined from "../icons/LoadingOutlined.vue";
 
 /** Vort NotificationItem - 通知项组件（内部组件） */
 
@@ -23,6 +23,8 @@ interface Props {
     closable?: boolean;
     /** 弹出位置 */
     placement?: NotificationPlacement;
+    /** 是否可点击（点击主体触发 bodyClick） */
+    clickable?: boolean;
     /** 自定义类名 */
     class?: string;
 }
@@ -31,13 +33,22 @@ const props = withDefaults(defineProps<Props>(), {
     type: "info",
     duration: 4500,
     closable: true,
-    placement: "topRight"
+    placement: "topRight",
+    clickable: false
 });
 
 const emit = defineEmits<{
     /** 通知关闭时触发 */
     close: [id: string];
+    /** 点击通知主体时触发（点关闭按钮不触发） */
+    bodyClick: [id: string];
 }>();
+
+// 点击通知主体（非关闭按钮）：可点击态下派发 bodyClick
+const handleBodyClick = () => {
+    if (!props.clickable) return;
+    emit("bodyClick", props.id);
+};
 
 // 是否可见
 const visible = ref(false);
@@ -134,12 +145,14 @@ defineExpose({
                 'is-left': !isRight && !isCenter,
                 'is-center': isCenter,
                 'is-top': isTop,
-                'is-bottom': !isTop
+                'is-bottom': !isTop,
+                'is-clickable': clickable
             },
             props.class
         ]"
         @mouseenter="handleMouseEnter"
         @mouseleave="handleMouseLeave"
+        @click="handleBodyClick"
     >
         <div class="vort-notification-content">
             <!-- 图标 -->
@@ -156,7 +169,7 @@ defineExpose({
             </div>
 
             <!-- 关闭按钮 -->
-            <button v-if="closable" class="vort-notification-close" @click="close">
+            <button v-if="closable" class="vort-notification-close" @click.stop="close">
                 <CloseOutlined />
             </button>
         </div>
@@ -178,6 +191,11 @@ defineExpose({
         0 9px 28px 8px rgba(0, 0, 0, 0.05);
     pointer-events: all;
     transition: all 0.3s cubic-bezier(0.08, 0.82, 0.17, 1);
+}
+
+/* 可点击态：整条通知呈手型，提示可点击进入 */
+.vort-notification-item.is-clickable {
+    cursor: pointer;
 }
 
 /* ==================== 动画状态 ==================== */

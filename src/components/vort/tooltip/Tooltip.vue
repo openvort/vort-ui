@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from "vue";
-import { getVortPopupContainer, type FloatingPlacement, type FloatingTrigger, useZIndex } from "@/components/vort/composables";
+import { getVortPopupContainer, isEventInside, type FloatingPlacement, type FloatingTrigger, useZIndex } from "../composables";
 
-defineOptions({ name: "VortTooltip" });
+defineOptions({ name: "VortTooltip", inheritAttrs: false });
 
 // 使用 z-index 上下文，在 Dialog/Drawer 内时自动获得更高的层级
 const zIndex = useZIndex("tooltip");
@@ -481,8 +481,7 @@ const handleClickOutside = (e: MouseEvent) => {
     if (!canCloseByClickOutside) return;
     if (props.trigger !== "click" && props.trigger !== "contextMenu") return;
 
-    const target = e.target as Node;
-    if (triggerRef.value?.contains(target) || floatingRef.value?.contains(target)) {
+    if (isEventInside(e, triggerRef.value, floatingRef.value)) {
         return;
     }
     hide();
@@ -542,6 +541,7 @@ defineExpose({
 <template>
     <span
         ref="triggerRef"
+        v-bind="$attrs"
         class="vort-tooltip-trigger"
         @click="handleTriggerClick"
         @mouseenter="handleTriggerMouseEnter"
@@ -556,7 +556,7 @@ defineExpose({
     <Teleport v-if="shouldRenderTeleport" :to="popupContainer">
         <Transition name="vort-tooltip" appear @after-leave="handleAfterLeave">
             <div
-                v-if="visible && (title || $slots.default)"
+                v-if="visible && (title || $slots.title)"
                 ref="floatingRef"
                 :class="['vort-tooltip', props.overlayClass]"
                 :style="floatingStyle"

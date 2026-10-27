@@ -1,5 +1,7 @@
 /** Vort ConfigProvider 主题配置类型定义 */
 
+import type { ComputedRef, InjectionKey } from "vue";
+import type { FormVariant } from "../form/types";
 import type { Locale } from "../locale/types";
 
 /** 主题 Token 配置 */
@@ -179,13 +181,21 @@ export interface ConfigProviderProps {
      * ```
      */
     locale?: Locale;
+    /**
+     * 全局录入类控件的形态变体
+     * - 优先级低于 Form 的 variant 与控件自身的 variant / bordered
+     * - 嵌套 ConfigProvider 未设置时沿用外层配置
+     */
+    variant?: FormVariant;
 }
 
 /** 注入的配置上下文类型 */
 export interface ConfigProviderContext {
     /** 主题 Token */
     token: ThemeToken;
+    /** 全局录入类控件形态变体 */
+    variant?: FormVariant;
 }
 
 /** ConfigProvider 注入 Key */
-export const CONFIG_PROVIDER_KEY = Symbol("vortConfigProvider");
+export const CONFIG_PROVIDER_KEY: InjectionKey<ComputedRef<ConfigProviderContext>> = Symbol("vortConfigProvider");

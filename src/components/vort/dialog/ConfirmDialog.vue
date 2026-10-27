@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from "vue";
-import { InfoCircleFilled, CheckCircleFilled, CloseCircleFilled, ExclamationCircleFilled } from "@/components/vort/icons";
-import { Button } from "@/components/vort/button";
-import { getVortTeleportTo, useOverlayStack } from "@/components/vort/composables";
-import { useLocale } from "@/components/vort/locale/useLocale";
+import { ref, computed, watch, onUnmounted, nextTick } from "vue";
+import { InfoCircleFilled, CheckCircleFilled, CloseCircleFilled, ExclamationCircleFilled } from "../icons";
+import { Button } from "../button";
+import { getVortTeleportTo, useOverlayStack, useZIndexProviderValue, Z_INDEX_BASE } from "../composables";
+import { useLocale } from "../locale/useLocale";
 
 defineOptions({ name: "VortConfirmDialog" });
 
@@ -61,11 +61,13 @@ const props = withDefaults(defineProps<Props>(), {
     cancelText: undefined,
     confirmLoading: false,
     okType: "primary",
-    zIndex: 1000,
+    zIndex: Z_INDEX_BASE.confirm,
     centered: true,
     mousePosition: null,
     contentBg: "#fff"
 });
+
+useZIndexProviderValue(() => props.zIndex);
 
 const resolvedOkText = computed(() => props.okText ?? modalT("ok_text"));
 const resolvedCancelText = computed(() => props.cancelText ?? modalT("cancel_text"));
@@ -253,7 +255,9 @@ onUnmounted(() => {
                         <!-- 文本内容 -->
                         <div class="vort-confirm-dialog-content">
                             <span v-if="title" class="vort-confirm-dialog-title">{{ title }}</span>
-                            <div v-if="content" class="vort-confirm-dialog-message">{{ content }}</div>
+                            <div v-if="$slots.default || content" class="vort-confirm-dialog-message">
+                                <slot><span v-html="content" /></slot>
+                            </div>
                         </div>
                     </div>
 

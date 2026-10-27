@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import { computed, provide, toRef, watch, ref } from "vue";
-import type { CheckboxGroupProps, CheckboxOption } from "./types";
+import { useFormDisabled } from "../form/useFormDisabled";
+import type { CheckboxGroupProps } from "./types";
+import Checkbox from "./Checkbox.vue";
 
 defineOptions({ name: "VortCheckboxGroup" });
 
 /** Vort CheckboxGroup - 复选框组组件 */
 
-const props = withDefaults(defineProps<CheckboxGroupProps>(), {
-    disabled: false
-});
+const props = defineProps<CheckboxGroupProps>();
+
+/** disabled 合并：组件 prop > Form 级 disabled > 默认 false */
+const mergedDisabled = useFormDisabled(() => props.disabled);
 
 const emit = defineEmits<{
     "update:modelValue": [value: (string | number)[]];
@@ -31,7 +34,7 @@ watch(
 // 提供给子组件的上下文
 provide("checkboxGroupContext", {
     name: toRef(props, "name"),
-    disabled: toRef(props, "disabled"),
+    disabled: mergedDisabled,
     value: innerValue,
     onChange: (value: string | number, checked: boolean, _event: Event) => {
         const newValues = [...innerValue.value];
@@ -85,16 +88,6 @@ const groupClasses = computed(() => {
         <slot v-else />
     </div>
 </template>
-
-<script lang="ts">
-import Checkbox from "./Checkbox.vue";
-
-export default {
-    components: {
-        Checkbox
-    }
-};
-</script>
 
 <style scoped>
 /* ========================================

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, provide, watch, onMounted, nextTick, reactive, type Slot } from "vue";
-import { CloseOutlined, PlusOutlined } from "@/components/vort/icons";
+import { CloseOutlined, PlusOutlined } from "../icons";
 
 defineOptions({ name: "VortTabs" });
 
@@ -147,8 +147,14 @@ watch(
 const updateInkBar = async () => {
     if (props.type !== "line" || !tabNavRef.value) return;
     await nextTick();
-    const activeTab = tabNavRef.value.querySelector(".vort-tabs-tab-active") as HTMLElement;
-    const navWrap = tabNavRef.value.querySelector(".vort-tabs-nav-wrap") as HTMLElement;
+
+    // 等待期间组件可能已经卸载：调用方常在切换视图的同时改 activeKey 或 panes，
+    // 那次挂起的更新恢复时 ref 已是 null。必须重新取，不能沿用 await 之前的判断。
+    const nav = tabNavRef.value;
+    if (!nav) return;
+
+    const activeTab = nav.querySelector(".vort-tabs-tab-active") as HTMLElement;
+    const navWrap = nav.querySelector(".vort-tabs-nav-wrap") as HTMLElement;
 
     if (activeTab && navWrap) {
         const isVertical = props.tabPosition === "left" || props.tabPosition === "right";
@@ -255,7 +261,10 @@ const getTabStyle = (index: number) => {
                         <!-- 优先级: #tab-{key} 插槽 > TabPane 的 #tab 插槽 > tab 属性 -->
                         <slot :name="`tab-${pane.key}`" :tab="pane">
                             <component v-if="pane.tabSlot" :is="() => pane.tabSlot?.()" />
-                            <span v-else class="vort-tabs-tab-btn">{{ pane.tab }}</span>
+                            <span v-else class="vort-tabs-tab-btn">
+                                <span class="vort-tabs-tab-label">{{ pane.tab }}</span>
+                                <span class="vort-tabs-tab-label-reserve" aria-hidden="true">{{ pane.tab }}</span>
+                            </span>
                         </slot>
 
                         <!-- 关闭按钮 -->
@@ -430,7 +439,7 @@ const getTabStyle = (index: number) => {
     border: 0;
     outline: none;
     transition: color 0.2s;
-    font-weight: bold;
+    font-weight: 400;
 }
 
 .vort-tabs-tab:last-child {
@@ -443,6 +452,7 @@ const getTabStyle = (index: number) => {
 
 .vort-tabs-tab.vort-tabs-tab-active {
     color: var(--vort-primary);
+    font-weight: var(--vort-tabs-active-font-weight, bold);
 }
 
 .vort-tabs-tab.vort-tabs-tab-disabled {
@@ -455,8 +465,23 @@ const getTabStyle = (index: number) => {
 }
 
 .vort-tabs-tab-btn {
+    display: inline-grid;
     outline: none;
-    transition: all 0.2s;
+    transition: color 0.2s;
+}
+
+/* 两层文字共享网格位置，提前按选中字重占位，避免英文加粗时挤动相邻页签。 */
+.vort-tabs-tab-label,
+.vort-tabs-tab-label-reserve {
+    grid-area: 1 / 1;
+    text-align: center;
+}
+
+.vort-tabs-tab-label-reserve {
+    visibility: hidden;
+    pointer-events: none;
+    user-select: none;
+    font-weight: var(--vort-tabs-active-font-weight, bold);
 }
 
 /* 垂直模式标签项 */
@@ -519,7 +544,11 @@ const getTabStyle = (index: number) => {
     border-bottom-color: transparent;
     /* 底边透明，让分隔线显示 */
     border-radius: var(--vort-border-radius-lg, var(--vort-border-radius, 8px)) var(--vort-border-radius-lg, var(--vort-border-radius, 8px)) 0 0;
-    transition: all 0.2s;
+    /* 不用 all：字重若参与过渡，中文字体会在几档字形间跳切，看起来像闪一下 */
+    transition:
+        color 0.2s,
+        background-color 0.2s,
+        border-color 0.2s;
 }
 
 .vort-tabs-card .vort-tabs-tab:last-child,

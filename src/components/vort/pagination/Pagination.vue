@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { Select, type SelectOptionType } from "@/components/vort/select";
-import { Input } from "@/components/vort/input";
+import { Select, type SelectOptionType } from "../select";
+import { Input } from "../input";
 import { LeftOutlined, RightOutlined, DoubleLeftOutlined, DoubleRightOutlined, MoreOutlined } from "./icons";
 import { useLocale } from "../locale";
+import { resetFormItemStatus } from "../form/useFormItemStatus";
 
 defineOptions({ name: "VortPagination" });
 
@@ -57,6 +58,9 @@ const props = withDefaults(defineProps<Props>(), {
     simple: false,
     size: "default"
 });
+
+// 跳页输入框与每页条数选择框不继承外层 FormItem 的校验状态
+resetFormItemStatus();
 
 const emit = defineEmits<{
     "update:current": [page: number];
@@ -211,12 +215,6 @@ const handleJump = () => {
         changePage(targetPage);
     }
     jumpValue.value = "";
-};
-
-const handleJumpKeydown = (e: KeyboardEvent) => {
-    if (e.key === "Enter") {
-        handleJump();
-    }
 };
 
 const jumpPrev = () => {
@@ -375,7 +373,7 @@ const getNavItemClasses = (isDisabled: boolean) => {
                     :size="size === 'small' ? 'small' : 'middle'"
                     :disabled="disabled"
                     class="vort-pagination-options-quick-jumper-input"
-                    @keydown="handleJumpKeydown"
+                    @press-enter="handleJump"
                     @blur="handleJump"
                 />
                 <span>{{ t("page") }}</span>
@@ -391,6 +389,7 @@ const getNavItemClasses = (isDisabled: boolean) => {
 .vort-pagination {
     display: inline-flex;
     align-items: center;
+    justify-content: var(--vort-pagination-justify, flex-start);
     flex-wrap: wrap;
     gap: 8px;
     font-size: var(--vort-font-size-sm, 14px);

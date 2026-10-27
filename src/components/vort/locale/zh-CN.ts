@@ -46,7 +46,9 @@ const zhCN: Locale = {
         upload_text: "点击上传",
         drag_text: "点击或拖拽文件到此区域上传",
         remove_file: "删除文件",
-        preview_file: "预览文件"
+        preview_file: "预览文件",
+        upload_failed: "上传失败，请稍后重试",
+        network_failed: "上传失败，请检查网络后重试"
     },
 
     Select: {
@@ -101,7 +103,9 @@ const zhCN: Locale = {
         min_length: "长度不能小于 {min}",
         max_length: "长度不能大于 {max}",
         pattern: "格式不正确",
-        optional: "（可选）"
+        optional: "（可选）",
+        tooltip_label: "查看{label}说明",
+        tooltip_label_default: "查看说明"
     },
 
     Cascader: {
@@ -111,7 +115,8 @@ const zhCN: Locale = {
 
     AutoComplete: {
         placeholder: "请输入",
-        no_match: "无匹配结果"
+        no_match: "无匹配结果",
+        loading: "加载中..."
     },
 
     InputPassword: {
@@ -121,6 +126,13 @@ const zhCN: Locale = {
 
     Alert: {
         close: "关闭"
+    },
+
+    Result: {
+        error: "加载失败",
+        forbidden: "没有访问权限",
+        not_found: "内容不存在",
+        empty: "暂无数据"
     }
 };
 

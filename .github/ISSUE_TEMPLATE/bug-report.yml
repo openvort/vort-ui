@@ -55,6 +55,7 @@ body:
         - Popconfirm 气泡确认
         - Popover 气泡卡片
         - Radio 单选框
+        - Result 结果
         - Scrollbar 滚动条
         - Segmented 分段控制器
         - Select 选择器

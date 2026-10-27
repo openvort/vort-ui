@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch, provide, useSlots, nextTick, onUnmounted, onMounted, reactive } from "vue";
-import { Checkbox, Spin, Pagination } from "@/components/vort";
-import { CaretUpFilled, CaretDownFilled, EmptyOutlined, LoadingOutlined } from "@/components/vort/icons";
-import { useVirtualScroll } from "@/components/vort/composables";
+import Checkbox from "../checkbox/Checkbox.vue";
+import Radio from "../radio/Radio.vue";
+import Spin from "../spin/Spin.vue";
+import Pagination from "../pagination/Pagination.vue";
+import { CaretUpFilled, CaretDownFilled, EmptyOutlined, LoadingOutlined } from "../icons";
+import { useVirtualScroll } from "../composables";
 import { useLocale } from "../locale";
 import { CellRenderer, HeaderRenderer } from "./renderers";
 import type {
@@ -50,6 +53,8 @@ interface Props<T = any> {
     rowSelection?: TableRowSelection<any>;
     /** 滚动配置 */
     scroll?: TableScroll;
+    /** 受控的排序状态；传入后表头排序图标只跟随它，点击表头只触发 change，由使用方更新 */
+    sortState?: SortState;
     /** 表格包装器最小高度（用于覆盖全局样式，如主题中 min-height: 300px） */
     minHeight?: number | string;
     /** 表格包装器最大高度（不传时默认使用 scroll.y 作为 max-height） */
@@ -99,6 +104,7 @@ const props = withDefaults(defineProps<Props>(), {
     loading: false,
     // eslint-disable-next-line vue/require-valid-default-prop
     pagination: () => ({ current: 1, pageSize: 10, total: 0, showPagination: true }),
+    sortState: undefined,
     minHeight: undefined,
     maxHeight: undefined,
     emptyText: undefined,
@@ -349,8 +355,9 @@ const isMultiLevelHeader = computed(() => {
 const internalCurrent = ref(typeof props.pagination === "object" ? props.pagination.current || 1 : 1);
 const internalPageSize = ref(typeof props.pagination === "object" ? props.pagination.pageSize || 10 : 10);
 
-// 排序状态
-const sortState = ref<SortState>({ field: "", order: null });
+// 排序状态：非受控时由表格自己维护；传入 sortState 时以 prop 为准
+const internalSortState = ref<SortState>({ field: "", order: null });
+const sortState = computed<SortState>(() => props.sortState ?? internalSortState.value);
 
 // ==================== 树形展开状态管理 ====================
 // 展开的行 keys
@@ -597,11 +604,11 @@ const flattenTreeData = (data: TableRecord[], level: number = 0, parentKey?: str
 const initSortState = () => {
     for (const col of leafColumns.value) {
         if (col.sortOrder !== undefined) {
-            sortState.value = { field: col.dataIndex || col.key || "", order: col.sortOrder };
+            internalSortState.value = { field: col.dataIndex || col.key || "", order: col.sortOrder };
             break;
         }
         if (col.defaultSortOrder) {
-            sortState.value = { field: col.dataIndex || col.key || "", order: col.defaultSortOrder };
+            internalSortState.value = { field: col.dataIndex || col.key || "", order: col.defaultSortOrder };
             break;
         }
     }
@@ -614,12 +621,12 @@ watch(
         // 检查是否有受控的 sortOrder
         for (const col of leafColumns.value) {
             if (col.sortOrder !== undefined) {
-                sortState.value = { field: col.dataIndex || col.key || "", order: col.sortOrder };
+                internalSortState.value = { field: col.dataIndex || col.key || "", order: col.sortOrder };
                 return;
             }
         }
         // 如果当前没有排序状态，检查 defaultSortOrder
-        if (!sortState.value.field) {
+        if (!internalSortState.value.field) {
             initSortState();
         }
     },
@@ -834,7 +841,10 @@ const handleSort = (column: TableColumn) => {
         newOrder = "ascend";
     }
 
-    sortState.value = { field: newOrder ? field : "", order: newOrder };
+    // 受控时不改内部状态，等使用方回写 sortState
+    if (props.sortState === undefined) {
+        internalSortState.value = { field: newOrder ? field : "", order: newOrder };
+    }
 
     // 排序后重置到第一页
     internalCurrent.value = 1;
@@ -987,6 +997,11 @@ const sizeClass = computed(() => {
 });
 
 // 容器样式
+// 追踪表格滚动容器的可视宽度，用于横向滚动时将空态限制在当前可视范围内
+const tableActualWidth = ref(0);
+const tableHeaderRef = ref<HTMLElement | null>(null);
+const tableHeaderHeight = ref(0);
+
 const containerClass = computed(() => {
     const classes = ["vort-table-container"];
     if (props.bordered) classes.push("vort-table-bordered");
@@ -1005,7 +1020,9 @@ const containerStyle = computed(() => {
 
     return {
         "--vort-table-left-shadow": showLeftShadow ? "inset 10px 0 8px -8px rgba(0, 0, 0, 0.1)" : "none",
-        "--vort-table-right-shadow": showRightShadow ? "inset -10px 0 8px -8px rgba(0, 0, 0, 0.1)" : "none"
+        "--vort-table-right-shadow": showRightShadow ? "inset -10px 0 8px -8px rgba(0, 0, 0, 0.1)" : "none",
+        "--vort-table-visible-width": tableActualWidth.value > 0 ? `${tableActualWidth.value}px` : "100%",
+        "--vort-table-header-height": `${tableHeaderHeight.value}px`
     };
 });
 
@@ -1031,6 +1048,7 @@ const scrollStyle = computed(() => {
     if (computedMaxHeight) {
         style.overflowY = "auto";
         style.maxHeight = computedMaxHeight;
+        style["--vort-table-max-height"] = computedMaxHeight;
     }
     return style;
 });
@@ -1145,9 +1163,6 @@ const formatSize = (value: number | string | undefined): string | undefined => {
  * 注意：表格实际宽度 = max(scroll.x, 容器宽度)，因为设了 min-width: 100%。
  * 必须用实际 DOM 宽度来计算平分值，而不是 scroll.x。
  */
-
-// 追踪表格容器的实际渲染宽度，用于 minWidth 计算
-const tableActualWidth = ref(0);
 
 const updateTableActualWidth = () => {
     if (tableWrapperRef.value) {
@@ -1379,21 +1394,39 @@ const handleTableScroll = () => {
 // 初始化和窗口大小变化时更新
 let resizeObserver: ResizeObserver | null = null;
 
+const updateTableHeaderHeight = () => {
+    tableHeaderHeight.value = tableHeaderRef.value?.offsetHeight ?? 0;
+};
+
 const initScrollObserver = () => {
     const wrapper = tableWrapperRef.value;
     if (!wrapper) return;
 
     updateScrollState();
     updateTableActualWidth();
+    updateTableHeaderHeight();
     wrapper.addEventListener("scroll", handleTableScroll);
 
     // 使用 ResizeObserver 监听尺寸变化
     resizeObserver = new ResizeObserver(() => {
         updateScrollState();
         updateTableActualWidth();
+        updateTableHeaderHeight();
     });
     resizeObserver.observe(wrapper);
+    if (tableHeaderRef.value) resizeObserver.observe(tableHeaderRef.value);
 };
+
+// 表头显隐、多级表头和尺寸切换都以实际高度为定位基准。
+watch(
+    tableHeaderRef,
+    (header, previousHeader) => {
+        if (previousHeader) resizeObserver?.unobserve(previousHeader);
+        if (header) resizeObserver?.observe(header);
+        updateTableHeaderHeight();
+    },
+    { flush: "post" }
+);
 
 onMounted(() => {
     // 等待 DOM 渲染完成后初始化
@@ -1437,15 +1470,15 @@ defineExpose({
     },
     /** 获取展开的行 keys */
     getExpandedRowKeys: () => [...internalExpandedKeys.value],
-    /** 重置排序状态 */
+    /** 重置排序状态（仅非受控时生效；受控时由使用方复位 sortState） */
     resetSort: () => {
-        sortState.value = { field: "", order: null };
+        internalSortState.value = { field: "", order: null };
     }
 });
 </script>
 
 <template>
-    <div :class="containerClass" :style="containerStyle">
+    <div :class="containerClass" :style="containerStyle" :aria-busy="internalLoading" :inert="internalLoading">
         <!-- 隐藏的插槽容器，用于渲染 TableColumn 子组件以收集列配置 -->
         <!-- ref 用于获取 TableColumn 的 DOM 顺序，修复 v-if 动态显隐导致的列顺序错乱 -->
         <div ref="slotContainerRef" v-show="false" aria-hidden="true">
@@ -1456,7 +1489,11 @@ defineExpose({
         <Spin :spinning="internalLoading" class="vort-table-spin" />
 
         <!-- 表格主体 -->
-        <div ref="tableWrapperRef" class="vort-table-wrapper" :style="scrollStyle">
+        <div
+            ref="tableWrapperRef"
+            :class="['vort-table-wrapper', { 'vort-table-wrapper--no-rows': flattenedRenderData.length === 0 }]"
+            :style="scrollStyle"
+        >
             <table class="vort-table" :style="tableStyle">
                 <colgroup>
                     <col
@@ -1468,7 +1505,7 @@ defineExpose({
                     <col v-for="column in leafColumns" :key="column.key || column.dataIndex || column.title" :style="getColStyle(column)" />
                 </colgroup>
                 <!-- 表头 -->
-                <thead v-if="showHeader" class="vort-table-thead">
+                <thead v-if="showHeader" ref="tableHeaderRef" class="vort-table-thead">
                     <!-- 多级表头：多行渲染 -->
                     <template v-if="isMultiLevelHeader">
                         <tr v-for="(headerRow, rowIndex) in getHeaderRows" :key="rowIndex">
@@ -1607,12 +1644,14 @@ defineExpose({
                     <!-- 空状态（loading 时不显示） -->
                     <tr v-if="flattenedRenderData.length === 0 && !internalLoading" class="vort-table-empty-row">
                         <td :colspan="(rowSelection ? 1 : 0) + leafColumns.length" class="vort-table-empty-cell">
-                            <slot name="empty">
-                                <div class="vort-table-empty">
-                                    <EmptyOutlined class="vort-table-empty-icon" />
-                                    <span class="vort-table-empty-text">{{ emptyTextValue }}</span>
-                                </div>
-                            </slot>
+                            <div class="vort-table-empty-slot">
+                                <slot name="empty">
+                                    <div class="vort-table-empty">
+                                        <EmptyOutlined class="vort-table-empty-icon" />
+                                        <span class="vort-table-empty-text">{{ emptyTextValue }}</span>
+                                    </div>
+                                </slot>
+                            </div>
                         </td>
                     </tr>
 
@@ -1664,7 +1703,14 @@ defineExpose({
                             ]"
                             :style="getSelectionColumnStyle(false)"
                         >
+                            <Radio
+                                v-if="rowSelection.type === 'radio'"
+                                :checked="isRowSelected(virtualRow.item.record, virtualRow.item.index)"
+                                :disabled="rowSelection.getCheckboxProps?.(virtualRow.item.record)?.disabled"
+                                @update:checked="(checked: boolean) => handleSelect(virtualRow.item.record, checked, virtualRow.item.index)"
+                            />
                             <Checkbox
+                                v-else
                                 :checked="isRowSelected(virtualRow.item.record, virtualRow.item.index)"
                                 :disabled="rowSelection.getCheckboxProps?.(virtualRow.item.record)?.disabled"
                                 @update:checked="(checked: boolean) => handleSelect(virtualRow.item.record, checked, virtualRow.item.index)"
@@ -1806,19 +1852,24 @@ defineExpose({
     z-index: 10;
 }
 
-/* spinner 距顶部固定偏移，但容器过矮时自动缩小偏移，避免看不见 */
+/* 固定在表头下方 64px；显式压缩高度的表格才收缩偏移，保证图标可见。 */
 .vort-table-container :deep(.vort-table-spin .vort-spin-spinning) {
     position: absolute;
     left: 50%;
     transform: translateX(-50%);
-    /* 期望偏移 120px；容器高度不足时，top 最大不超过 (100% - 80px)，确保 spinner 可见 */
-    top: clamp(16px, 220px, calc(100% - 80px));
+    top: min(calc(var(--vort-table-header-height) + 64px), max(0px, calc(100% - 32px)));
 }
 
 /* 表格包装器 - 滚动容器 */
 .vort-table-wrapper {
     overflow-x: auto;
     overflow-y: hidden;
+}
+
+/* 没有数据行时（首次加载、加载后为空）给表体留出最小高度，让加载图标有固定位置；
+   有数据行时高度跟随内容，避免一两行的表格下方空出一截。 */
+.vort-table-wrapper--no-rows {
+    min-height: min(calc(var(--vort-table-header-height) + 128px), var(--vort-table-max-height, calc(var(--vort-table-header-height) + 128px)));
 }
 
 /* 表格 */
@@ -1989,6 +2040,19 @@ defineExpose({
     background: #ffffff;
 }
 
+.vort-table-tbody td.vort-table-empty-cell {
+    border-bottom: none;
+}
+
+/* 空态以可视滚动区域为基准居中，而不是以横向滚动后的整张表格宽度为基准 */
+.vort-table-empty-slot {
+    position: sticky;
+    left: 16px;
+    /* 空态单元格左右各有 16px 内边距，扣除后避免把表格撑出横向滚动条 */
+    width: calc(var(--vort-table-visible-width, 100%) - 32px);
+    box-sizing: border-box;
+}
+
 .vort-table-empty {
     display: flex;
     flex-direction: column;
@@ -2109,7 +2173,7 @@ defineExpose({
 .vort-table-pagination {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: var(--vort-pagination-justify, flex-end);
     padding: 16px 0;
 }
 

@@ -9,14 +9,26 @@ export type FormLayout = "horizontal" | "vertical" | "inline";
 /** 表单尺寸 */
 export type FormSize = "large" | "middle" | "small";
 
+/**
+ * 录入类控件的形态变体（对齐 antd Variant）
+ * - outlined: 默认有边框
+ * - filled: 填充背景
+ * - borderless: 无边框
+ * - underlined: 下划线
+ */
+export type FormVariant = "outlined" | "filled" | "borderless" | "underlined";
+
 /** 标签对齐方式 */
 export type LabelAlign = "left" | "right";
 
 /** 验证触发时机 */
-export type ValidateTrigger = "change" | "blur" | Array<"change" | "blur">;
+export type ValidateTrigger = "change" | "blur" | "submit" | Array<"change" | "blur" | "submit">;
 
 /** 验证状态 */
 export type ValidateStatus = "success" | "warning" | "error" | "validating" | "";
+
+/** FormItem 下发给录入控件的校验状态；成功、校验中不改变控件外观（对齐 antd） */
+export type FormItemControlStatus = "error" | "warning";
 
 /** 栅格配置 */
 export interface ColProps {
@@ -48,8 +60,12 @@ export interface FormProps {
     disabled?: boolean;
     /** 设置字段组件的尺寸 */
     size?: FormSize;
-    /** 统一设置字段触发验证的时机 */
+    /** 表单内录入类控件的形态变体；控件自身 variant / bordered 优先 */
+    variant?: FormVariant;
+    /** 统一设置字段触发验证的时机，submit 表示仅在提交或手动校验时触发 */
     validateTrigger?: ValidateTrigger;
+    /** FormItem 卸载时是否保留内部字段值，默认 false；不保留已卸载字段的局部验证器 */
+    keepValuesOnUnmount?: boolean;
     /** 是否显示必填标记 */
     requiredMark?: boolean | "optional";
     /** 是否启用响应式布局（小屏幕自动切换为垂直布局） */
@@ -77,14 +93,18 @@ export interface FormExpose {
     /** 重置表单 */
     resetFields: () => void;
     validate: (names?: string | string[]) => Promise<true | never>;
-    /** 验证表单字段 */
-    validateFields: (names?: string | string[]) => Promise<{ valid: boolean; errors: Record<string, string> }>;
+    /** 验证表单字段；displayedFields 为已在 FormItem 下方展示的错误字段，其余错误需调用方自行提示 */
+    validateFields: (names?: string | string[]) => Promise<{ valid: boolean; errors: Record<string, string>; displayedFields: string[] }>;
     /** 清除验证 */
     clearValidate: (names?: string | string[]) => void;
     /** 设置字段值 */
     setFieldsValue: (fieldsValue: Record<string, unknown>) => void;
     /** 获取字段值 */
     getFieldsValue: (names?: string | string[]) => Record<string, unknown>;
+    /** 写入外部（服务端）字段级错误，返回已承接的字段路径；路径与 FormItem.name 精确匹配 */
+    setFields: (fieldErrors: Record<string, string>) => string[];
+    /** 把字段所在的 FormItem 滚动到可视区，已在可视区时不滚动 */
+    scrollToField: (name: string) => void;
 }
 
 /** FormItem 组件 Props */
@@ -130,11 +150,20 @@ export interface FormContext {
     colon: boolean;
     disabled: boolean;
     size: FormSize;
+    /** 未设置时为 undefined，由控件继续向 ConfigProvider 回退 */
+    variant?: FormVariant;
     requiredMark: boolean | "optional";
     validateTrigger: ValidateTrigger;
-    errors: Record<string, string>;
+    errors: Partial<Record<string, string>>;
+    /** 是否已经执行过表单校验 */
+    isValidated: boolean;
+    /** 重置次数，用于通知字段清理交互状态 */
+    resetCount: number;
+    /** 注册字段名和错误文案展示能力，返回注销方法 */
+    registerField: (getName: () => string | undefined, canDisplay: () => boolean) => () => void;
     setFieldValue: (name: string, value: unknown) => void;
     setFieldError: (name: string, message: string) => void;
+    validateField: (name: string) => Promise<unknown>;
     registerLabelWidth?: (id: string, width: number) => void;
     updateLabelWidth?: (id: string, width: number) => void;
     unregisterLabelWidth?: (id: string) => void;

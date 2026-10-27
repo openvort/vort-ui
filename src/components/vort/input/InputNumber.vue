@@ -1,29 +1,43 @@
-<script setup lang="ts">
-import { computed, ref, watch, onMounted, onUnmounted, useSlots, useAttrs } from "vue";
+<script setup lang="ts" generic="T extends number | string = number">
+import { computed, ref, shallowRef, watch, onMounted, onUnmounted, useSlots, useAttrs } from "vue";
 import type { StyleValue } from "vue";
-import { UpOutlined, DownOutlined } from "@/components/vort/icons";
+import { UpOutlined, DownOutlined } from "../icons";
+import { useFormDisabled } from "../form/useFormDisabled";
+import { useFormItemStatus } from "../form/useFormItemStatus";
+import { useFormVariant } from "../form/useFormVariant";
 import type { InputNumberProps } from "./types";
+import Decimal from "decimal.js";
+
+const D = Decimal.clone({ precision: 256, rounding: Decimal.ROUND_HALF_UP });
 
 defineOptions({ name: "VortInputNumber", inheritAttrs: false });
 
 /** Vort InputNumber - 数字输入框组件 */
 
-const props = withDefaults(defineProps<InputNumberProps>(), {
+const props = withDefaults(defineProps<InputNumberProps<T>>(), {
     step: 1,
     size: "middle",
-    disabled: false,
     readOnly: false,
     bordered: true,
     controls: true,
+    handleVisible: "auto",
     keyboard: true,
-    stringMode: false,
+    stringMode: undefined,
     compact: false
 });
 
+const mergedDisabled = useFormDisabled(() => props.disabled);
+const mergedStatus = useFormItemStatus(() => props.status);
+const mergedVariant = useFormVariant(
+    () => props.variant,
+    () => props.bordered
+);
+const hasControls = computed(() => props.controls && !mergedDisabled.value && !props.readOnly);
+
 const emit = defineEmits<{
-    "update:modelValue": [value: number | null];
-    change: [value: number | null];
-    step: [value: number | null, info: { offset: number; type: "up" | "down" }];
+    "update:modelValue": [value: T | null];
+    change: [value: T | null];
+    step: [value: T | null, info: { offset: number; type: "up" | "down" }];
     focus: [event: FocusEvent];
     blur: [event: FocusEvent];
     pressEnter: [event: KeyboardEvent];
@@ -42,63 +56,78 @@ const hasAddon = computed(() => !!slots.addonBefore || !!slots.addonAfter);
 // 内部显示值
 const displayValue = ref("");
 
+const inputStyle = computed(() => ({ "--_value-chars": Math.max(displayValue.value.length, 1) }));
+
 // 当前数值
-const innerValue = ref<number | null>(props.modelValue ?? props.defaultValue ?? null);
+const innerValue = shallowRef<number | string | null>(props.modelValue ?? props.defaultValue ?? null);
+const useString = computed(() => props.stringMode ?? (typeof props.modelValue === "string" || typeof props.defaultValue === "string"));
+const externalValue = (value: number | string | null) => value as T | null;
+const toValue = (value: Decimal): number | string | null => {
+    if (!value.isFinite()) return null;
+    if (useString.value) return value.toFixed();
+    const number = value.toNumber();
+    return Number.isFinite(number) ? number : null;
+};
+const decimalValue = (value: number | string | null | undefined): Decimal | null => {
+    if (value == null || value === "") return null;
+    try {
+        const decimal = new D(value);
+        return decimal.isFinite() ? decimal : null;
+    } catch {
+        return null;
+    }
+};
 
 // 步进值
 const stepNum = computed(() => {
-    const s = Number(props.step);
-    return isNaN(s) ? 1 : s;
+    return (decimalValue(props.step) ?? new D(1)).toNumber();
 });
 
 // 精度计算
-const getPrecision = (num: number): number => {
-    const str = String(num);
-    const dotIndex = str.indexOf(".");
-    return dotIndex > -1 ? str.length - dotIndex - 1 : 0;
-};
-
-const precision = computed(() => {
-    if (props.precision !== undefined) {
-        return props.precision;
+const getPrecision = (value: number | string): number => {
+    try {
+        return new D(value).decimalPlaces();
+    } catch {
+        return 0;
     }
-    const stepPrecision = getPrecision(stepNum.value);
-    const valuePrecision = innerValue.value !== null ? getPrecision(innerValue.value) : 0;
-    return Math.max(stepPrecision, valuePrecision);
-});
-
-// 格式化数值为显示字符串
-const formatValue = (val: number | null): string => {
-    if (val === null || val === undefined) return "";
-    const numVal = typeof val === "number" ? val : Number(val);
-    if (isNaN(numVal)) return "";
-    const formatted = precision.value !== undefined ? numVal.toFixed(precision.value) : String(numVal);
-    if (props.formatter) return props.formatter(formatted);
-    return formatted;
 };
 
-// 解析字符串为数值
-const parseValue = (str: string): number | null => {
-    if (str === "" || str === "-") return null;
-    let parsed = str;
-    if (props.parser) {
-        const result = props.parser(str);
-        parsed = String(result);
+const precision = computed(() => props.precision ?? Math.max(getPrecision(props.step), innerValue.value === null ? 0 : getPrecision(innerValue.value)));
+
+const formatValue = (value: number | string | null): string => {
+    if (value == null) return "";
+    try {
+        const number = new D(value);
+        if (!number.isFinite()) return "";
+        const formatted = number.toFixed(precision.value, Decimal.ROUND_HALF_UP);
+        return props.formatter ? props.formatter(formatted) : formatted;
+    } catch {
+        return "";
     }
-    parsed = parsed.replace(/[^\d.\-]/g, "");
-    const num = parseFloat(parsed);
-    return isNaN(num) ? null : num;
 };
 
-// 限制数值在 min/max 范围内
-const clampValue = (val: number | null): number | null => {
-    if (val === null || val === undefined) return null;
-    let result = typeof val === "number" ? val : Number(val);
-    if (isNaN(result)) return null;
-    if (props.min !== undefined && result < props.min) result = props.min;
-    if (props.max !== undefined && result > props.max) result = props.max;
-    if (precision.value !== undefined) result = parseFloat(result.toFixed(precision.value));
-    return result;
+const parseValue = (value: string): number | string | null => {
+    const parsed = String(props.parser ? props.parser(value) : value).trim();
+    if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(parsed) || parsed.length > 128) return null;
+    try {
+        const number = new D(parsed);
+        return number.isFinite() ? toValue(number) : null;
+    } catch {
+        return null;
+    }
+};
+
+const clampValue = (value: number | string | null): number | string | null => {
+    if (value == null) return null;
+    try {
+        let number = new D(value);
+        if (!number.isFinite()) return null;
+        if (props.min !== undefined) number = D.max(number, props.min);
+        if (props.max !== undefined) number = D.min(number, props.max);
+        return toValue(number.toDecimalPlaces(precision.value, Decimal.ROUND_HALF_UP));
+    } catch {
+        return null;
+    }
 };
 
 // 监听 modelValue 变化
@@ -126,27 +155,32 @@ onMounted(() => {
 
 // 是否可以增加
 const canIncrease = computed(() => {
-    if (props.disabled || props.readOnly) return false;
+    if (mergedDisabled.value || props.readOnly) return false;
     if (props.max === undefined) return true;
-    return innerValue.value === null || innerValue.value < props.max;
+    const current = decimalValue(innerValue.value),
+        max = decimalValue(props.max);
+    return !current || !max || current.lt(max);
 });
 
 // 是否可以减少
 const canDecrease = computed(() => {
-    if (props.disabled || props.readOnly) return false;
+    if (mergedDisabled.value || props.readOnly) return false;
     if (props.min === undefined) return true;
-    return innerValue.value === null || innerValue.value > props.min;
+    const current = decimalValue(innerValue.value),
+        min = decimalValue(props.min);
+    return !current || !min || current.gt(min);
 });
 
 // ========== 类名计算（只负责切换状态类名）==========
 
 /** Wrapper 类名 */
 const wrapperClasses = computed(() => {
-    const classes = ["vort-input-number", `vort-input-number-${props.size}`];
+    const classes = ["vort-input-number", `vort-input-number-${props.size}`, `vort-input-number-${mergedVariant.value}`];
 
-    if (props.status) classes.push(`vort-input-number-${props.status}`);
-    if (props.disabled) classes.push("vort-input-number-disabled");
-    if (!props.bordered) classes.push("vort-input-number-borderless");
+    if (mergedStatus.value) classes.push(`vort-input-number-${mergedStatus.value}`);
+    if (mergedDisabled.value) classes.push("vort-input-number-disabled");
+    if (hasControls.value) classes.push("vort-input-number-with-controls");
+    if (props.handleVisible === true) classes.push("vort-input-number-controls-always");
     if (hasAddon.value) classes.push("vort-input-number-has-addon");
     if (slots.addonBefore) classes.push("vort-input-number-has-addon-before");
     if (slots.addonAfter) classes.push("vort-input-number-has-addon-after");
@@ -178,13 +212,6 @@ const addonAfterClasses = computed(() => {
     return classes;
 });
 
-/** 控制按钮容器类名 */
-const controlsClasses = computed(() => {
-    const classes = ["vort-input-number-handler-wrap", `vort-input-number-handler-wrap-${props.size}`];
-    if (isHovered.value || isFocused.value) classes.push("vort-input-number-handler-wrap-visible");
-    return classes;
-});
-
 /** 控制按钮类名 */
 const getControlBtnClasses = (type: "up" | "down", enabled: boolean) => {
     const classes = ["vort-input-number-handler", `vort-input-number-handler-${type}`];
@@ -197,6 +224,20 @@ const getControlBtnClasses = (type: "up" | "down", enabled: boolean) => {
 const handleInput = (event: Event) => {
     const target = event.target as HTMLInputElement;
     displayValue.value = target.value;
+    // 输入过程中即时 emit，让外部依赖数值的联动校验 / 显示能实时响应，
+    // 避免必须 blur 才能拿到最新值。min/max/precision 的规范化留到 change / blur 时统一处理。
+    if (target.value === "" || target.value === "-") {
+        if (innerValue.value !== null) {
+            innerValue.value = null;
+            emit("update:modelValue", null);
+        }
+        return;
+    }
+    const parsed = parseValue(target.value);
+    if (parsed !== null && parsed !== innerValue.value) {
+        innerValue.value = parsed;
+        emit("update:modelValue", externalValue(parsed));
+    }
 };
 
 const handleChange = () => {
@@ -204,8 +245,8 @@ const handleChange = () => {
     const clamped = clampValue(parsed);
     innerValue.value = clamped;
     displayValue.value = formatValue(clamped);
-    emit("update:modelValue", clamped);
-    emit("change", clamped);
+    emit("update:modelValue", externalValue(clamped));
+    emit("change", externalValue(clamped));
 };
 
 const handleFocus = (event: FocusEvent) => {
@@ -238,19 +279,20 @@ const handleKeydown = (event: KeyboardEvent) => {
 
 // 步进操作
 const handleStep = (type: "up" | "down") => {
-    if (props.disabled || props.readOnly) return;
+    if (mergedDisabled.value || props.readOnly) return;
     if (type === "up" && !canIncrease.value) return;
     if (type === "down" && !canDecrease.value) return;
 
     const offset = type === "up" ? stepNum.value : -stepNum.value;
-    const currentVal = innerValue.value ?? 0;
-    const newVal = clampValue(currentVal + offset);
+    const currentVal = decimalValue(innerValue.value) ?? new D(0);
+    const delta = (decimalValue(props.step) ?? new D(1)).mul(type === "up" ? 1 : -1);
+    const newVal = clampValue(currentVal.add(delta).toFixed());
 
     innerValue.value = newVal;
     displayValue.value = formatValue(newVal);
-    emit("update:modelValue", newVal);
-    emit("change", newVal);
-    emit("step", newVal, { offset, type });
+    emit("update:modelValue", externalValue(newVal));
+    emit("change", externalValue(newVal));
+    emit("step", externalValue(newVal), { offset, type });
 };
 
 // 长按支持
@@ -286,7 +328,7 @@ const handleMouseLeave = () => {
 };
 
 const handleWrapperClick = () => {
-    if (!props.disabled) inputRef.value?.focus();
+    if (!mergedDisabled.value) inputRef.value?.focus();
 };
 
 // 暴露方法
@@ -319,7 +361,8 @@ defineExpose({
                 inputmode="decimal"
                 :value="displayValue"
                 class="vort-input-number-input"
-                :disabled="disabled"
+                :style="inputStyle"
+                :disabled="mergedDisabled"
                 :readonly="readOnly"
                 :placeholder="placeholder"
                 @input="handleInput"
@@ -335,7 +378,7 @@ defineExpose({
             </span>
 
             <!-- 控制按钮 -->
-            <span v-if="controls" :class="controlsClasses">
+            <span v-if="hasControls" class="vort-input-number-handler-wrap">
                 <span
                     :class="getControlBtnClasses('up', canIncrease)"
                     role="button"
@@ -379,7 +422,8 @@ defineExpose({
             inputmode="decimal"
             :value="displayValue"
             class="vort-input-number-input"
-            :disabled="disabled"
+            :style="inputStyle"
+            :disabled="mergedDisabled"
             :readonly="readOnly"
             :placeholder="placeholder"
             @input="handleInput"
@@ -395,7 +439,7 @@ defineExpose({
         </span>
 
         <!-- 控制按钮 -->
-        <span v-if="controls" :class="controlsClasses">
+        <span v-if="hasControls" class="vort-input-number-handler-wrap">
             <span
                 :class="getControlBtnClasses('up', canIncrease)"
                 role="button"
@@ -434,6 +478,11 @@ defineExpose({
     --_focus-color: var(--vort-primary, #1456f0);
     --_focus-shadow: var(--vort-primary-shadow, rgba(20, 86, 240, 0.1));
     --_bg-color: #fff;
+    --_input-padding: 11px;
+    --_handler-width: 22px;
+    --_handler-visible-width: 0px;
+    --_handler-opacity: 0;
+    --_handler-motion: var(--vort-motion-duration-mid, 200ms) var(--vort-motion-ease-in-out, cubic-bezier(0.645, 0.045, 0.355, 1));
 
     position: relative;
     display: inline-flex;
@@ -489,22 +538,126 @@ defineExpose({
     cursor: not-allowed;
 }
 
+/*
+ * 与 Input 同因：`.vort-input-number-input` 自己声明了正常文本色，
+ * 外层禁用色到不了它；原生 input 还要压住浏览器自带的禁用灰。
+ */
 .vort-input-number-disabled .vort-input-number-input {
+    color: var(--vort-text-quaternary, rgba(0, 0, 0, 0.25));
+    -webkit-text-fill-color: var(--vort-text-quaternary, rgba(0, 0, 0, 0.25));
     cursor: not-allowed;
 }
 
 /* ========================================
-   状态覆盖 - Borderless
+   形态变体 - Outlined（默认）
+   ======================================== */
+.vort-input-number-outlined {
+    border: 1px solid var(--_border-color);
+    background: var(--_bg-color);
+}
+
+/* ========================================
+   形态变体 - Filled
+   ======================================== */
+.vort-input-number-filled {
+    --_bg-color: rgba(0, 0, 0, 0.04);
+    /* 步进器叠在输入区上方，需要不透明底色遮住长数值；取 0.06 灰叠白后的实色 */
+    --_handler-bg: #f0f0f0;
+    border: 1px solid transparent;
+}
+
+.vort-input-number-filled:hover:not(.vort-input-number-disabled) {
+    --_bg-color: rgba(0, 0, 0, 0.06);
+    border-color: transparent;
+}
+
+.vort-input-number-filled:focus-within:not(.vort-input-number-disabled) {
+    --_bg-color: #fff;
+    --_handler-bg: #fff;
+    border-color: var(--_focus-color);
+    box-shadow: none;
+}
+
+/* Filled + Error/Warning：状态色浅底，不显示边框，聚焦时白底 + 状态色边框（对齐 antd） */
+.vort-input-number-filled.vort-input-number-error:not(.vort-input-number-disabled) {
+    --_bg-color: var(--vort-error-bg, #fff2f0);
+    --_handler-bg: var(--vort-error-bg, #fff2f0);
+}
+
+.vort-input-number-filled.vort-input-number-warning:not(.vort-input-number-disabled) {
+    --_bg-color: var(--vort-warning-bg, #fffbe6);
+    --_handler-bg: var(--vort-warning-bg, #fffbe6);
+}
+
+.vort-input-number-filled.vort-input-number-error:hover:not(.vort-input-number-disabled) {
+    --_bg-color: var(--vort-error-bg-hover, #fff1f0);
+    --_handler-bg: var(--vort-error-bg-hover, #fff1f0);
+}
+
+.vort-input-number-filled.vort-input-number-warning:hover:not(.vort-input-number-disabled) {
+    --_bg-color: var(--vort-warning-bg-hover, #fff1b8);
+    --_handler-bg: var(--vort-warning-bg-hover, #fff1b8);
+}
+
+.vort-input-number-filled.vort-input-number-error:focus-within:not(.vort-input-number-disabled),
+.vort-input-number-filled.vort-input-number-warning:focus-within:not(.vort-input-number-disabled) {
+    --_bg-color: #fff;
+    --_handler-bg: #fff;
+}
+
+/* ========================================
+   形态变体 - Borderless
    ======================================== */
 .vort-input-number-borderless {
     border-color: transparent;
     background: transparent;
 }
 
-.vort-input-number-borderless:hover:not(.vort-input-number-disabled),
-.vort-input-number-borderless:focus-within:not(.vort-input-number-disabled) {
+.vort-input-number-borderless:hover:not(.vort-input-number-disabled) {
     border-color: transparent;
+}
+
+/* 聚焦时显示 1px 边框，颜色随状态；鼠标点击与键盘聚焦都显示 */
+.vort-input-number-borderless:focus-within:not(.vort-input-number-disabled) {
+    border-color: var(--_focus-color);
     box-shadow: none;
+}
+
+/* Filled / Borderless 没有常显的状态边框，用状态色文字提示 */
+.vort-input-number-filled.vort-input-number-error:not(.vort-input-number-disabled) .vort-input-number-input,
+.vort-input-number-borderless.vort-input-number-error:not(.vort-input-number-disabled) .vort-input-number-input {
+    color: var(--vort-error, #ff4d4f);
+}
+
+.vort-input-number-filled.vort-input-number-warning:not(.vort-input-number-disabled) .vort-input-number-input,
+.vort-input-number-borderless.vort-input-number-warning:not(.vort-input-number-disabled) .vort-input-number-input {
+    color: var(--vort-warning, #faad14);
+}
+
+/* ========================================
+   形态变体 - Underlined
+   ======================================== */
+/* 四边保留 1px 透明边框、只给底边着色：切换形态时盒子尺寸不变，也不会从 border: none 的默认粗黑边过渡出来 */
+.vort-input-number-underlined {
+    border: 1px solid transparent;
+    border-bottom-color: var(--_border-color);
+    border-radius: 0;
+    background: transparent;
+}
+
+.vort-input-number-underlined:hover:not(.vort-input-number-disabled) {
+    border-color: transparent;
+    border-bottom-color: var(--_focus-color);
+}
+
+.vort-input-number-underlined:focus-within:not(.vort-input-number-disabled) {
+    border-color: transparent;
+    border-bottom-color: var(--_focus-color);
+    box-shadow: none;
+}
+
+.vort-input-number-underlined .vort-input-number-handler-wrap {
+    border-radius: 0;
 }
 
 /* ========================================
@@ -513,10 +666,6 @@ defineExpose({
 .vort-input-number-large {
     height: var(--vort-height-lg, 40px);
     font-size: var(--vort-font-size-md, 16px);
-}
-
-.vort-input-number-large .vort-input-number-input {
-    padding: 0 11px;
 }
 
 .vort-input-number-large .vort-input-number-prefix {
@@ -537,10 +686,6 @@ defineExpose({
     font-size: var(--vort-font-size-sm, 14px);
 }
 
-.vort-input-number-middle .vort-input-number-input {
-    padding: 0 11px;
-}
-
 .vort-input-number-middle .vort-input-number-prefix {
     padding-left: 11px;
     padding-right: 7px;
@@ -555,12 +700,10 @@ defineExpose({
    尺寸 - Small
    ======================================== */
 .vort-input-number-small {
+    --_input-padding: 7px;
+    --_handler-width: 18px;
     height: var(--vort-height-sm, 24px);
     font-size: var(--vort-font-size-sm, 14px);
-}
-
-.vort-input-number-small .vort-input-number-input {
-    padding: 0 7px;
 }
 
 .vort-input-number-small .vort-input-number-prefix {
@@ -577,9 +720,14 @@ defineExpose({
    内部元素 - Input
    ======================================== */
 .vort-input-number-input {
+    --_input-padding-start: var(--_input-padding);
+    --_input-padding-end: var(--_input-padding);
     flex: 1;
-    min-width: 0;
+    box-sizing: border-box;
+    /* 按当前字数保底，窄框里由后缀让位给步进器，值始终可见可输入；上限避免长值撑出外框 */
+    min-width: min(calc(var(--_value-chars, 1) * 1ch + var(--_input-padding-start) + var(--_input-padding-end)), calc(100% - var(--_handler-visible-width)));
     height: 100%;
+    padding: 0 var(--_input-padding-end) 0 var(--_input-padding-start);
     background: transparent;
     border: none;
     outline: none;
@@ -588,16 +736,17 @@ defineExpose({
 
 .vort-input-number-input::placeholder {
     color: var(--vort-text-quaternary, rgba(0, 0, 0, 0.25));
+    -webkit-text-fill-color: currentColor;
 }
 
 /* 有前缀时，input 不需要左 padding */
 .vort-input-number:has(.vort-input-number-prefix) .vort-input-number-input {
-    padding-left: 0;
+    --_input-padding-start: 0px;
 }
 
 /* 有后缀时，input 不需要右 padding */
 .vort-input-number:has(.vort-input-number-suffix) .vort-input-number-input {
-    padding-right: 0;
+    --_input-padding-end: 0px;
 }
 
 /* ========================================
@@ -612,9 +761,22 @@ defineExpose({
 
 .vort-input-number-suffix {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    flex-shrink: 0;
+    flex-shrink: 1;
+    min-width: 0;
+    height: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    margin-right: var(--_handler-visible-width);
+    transition: margin-right var(--_handler-motion);
     color: var(--vort-text-quaternary, rgba(0, 0, 0, 0.25));
+}
+
+/* 零宽占位撑满首行：放不下的后缀整体换到被裁掉的第二行，避免被切成半截贴边 */
+.vort-input-number-suffix::before {
+    content: "";
+    height: 100%;
 }
 
 /* ========================================
@@ -624,34 +786,23 @@ defineExpose({
     position: absolute;
     inset-block: 0;
     right: 0;
+    width: var(--_handler-visible-width);
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    background: #fff;
-    border-left: 1px solid var(--vort-border, #d9d9d9);
+    background: var(--_handler-bg, #fff);
     border-radius: 0 var(--vort-radius, 6px) var(--vort-radius, 6px) 0;
-    opacity: 0;
-    transition: opacity var(--vort-duration-normal, 200ms) var(--vort-ease-in-out, cubic-bezier(0.645, 0.045, 0.355, 1));
-    transition-delay: var(--vort-duration-normal, 200ms);
+    overflow: hidden;
+    opacity: var(--_handler-opacity);
+    transition:
+        width var(--_handler-motion),
+        opacity var(--_handler-motion);
 }
 
-.vort-input-number-handler-wrap-large {
-    width: 22px;
-}
-
-.vort-input-number-handler-wrap-middle {
-    width: 22px;
-}
-
-.vort-input-number-handler-wrap-small {
-    width: 18px;
-}
-
-/* 显示控制按钮 */
-.vort-input-number-handler-wrap-visible,
-.vort-input-number:hover .vort-input-number-handler-wrap,
-.vort-input-number:focus-within .vort-input-number-handler-wrap {
-    opacity: 1;
+/* 步进器与后缀同步展开；禁用、只读、controls=false 时不占位 */
+.vort-input-number-with-controls:is(:hover, :focus-within, .vort-input-number-active, .vort-input-number-controls-always) {
+    --_handler-visible-width: var(--_handler-width);
+    --_handler-opacity: 1;
 }
 
 /* ========================================
@@ -662,6 +813,7 @@ defineExpose({
     display: flex;
     align-items: center;
     justify-content: center;
+    border-left: 1px solid var(--vort-border, #d9d9d9);
     cursor: pointer;
     user-select: none;
     color: var(--vort-text-quaternary, rgba(0, 0, 0, 0.25));
@@ -715,6 +867,11 @@ defineExpose({
 .vort-input-number-addon-after {
     border-left: none;
     border-radius: 0 var(--vort-radius, 6px) var(--vort-radius, 6px) 0;
+}
+
+/* 前后置位里的无边框下拉框已有输入框外框，聚焦时不再画自己的边框 */
+.vort-input-number-addon :deep(.vort-select-borderless.vort-select-focused:not(.vort-select-disabled)) {
+    border-color: transparent;
 }
 
 /* Addon 尺寸 */

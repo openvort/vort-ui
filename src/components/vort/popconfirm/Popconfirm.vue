@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, useSlots, type Component } from "vue";
-import { ExclamationCircleFilled } from "@/components/vort/icons";
-import { getVortPopupContainer, type FloatingPlacement, useZIndex } from "@/components/vort/composables";
+import { ExclamationCircleFilled } from "../icons";
+import { getVortPopupContainer, isEventInside, type FloatingPlacement, useZIndex } from "../composables";
 import { useLocale } from "../locale";
+import { NoFormItemStatus } from "../form/useFormItemStatus";
 
 defineOptions({ name: "VortPopconfirm" });
 
@@ -480,8 +481,7 @@ const handleCancel = (e: MouseEvent) => {
 // 点击外部关闭
 const handleClickOutside = (e: MouseEvent) => {
     if (!visible.value || props.loading) return;
-    const target = e.target as Node;
-    if (triggerRef.value?.contains(target) || popoverRef.value?.contains(target)) {
+    if (isEventInside(e, triggerRef.value, popoverRef.value)) {
         return;
     }
     hide();
@@ -556,7 +556,10 @@ defineExpose({
 
                 <!-- 自定义内容模式 -->
                 <div v-if="hasContentSlot" class="vort-popconfirm-inner">
-                    <slot name="content" :hide="hide" :loading="loading" />
+                    <!-- 弹层内容不继承外层 FormItem 的校验状态 -->
+                    <NoFormItemStatus>
+                        <slot name="content" :hide="hide" :loading="loading" />
+                    </NoFormItemStatus>
 
                     <!-- 可选按钮区域 -->
                     <div v-if="showButtons" class="vort-popconfirm-buttons">

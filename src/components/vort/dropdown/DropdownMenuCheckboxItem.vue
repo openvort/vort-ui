@@ -3,7 +3,7 @@
  * Vort DropdownMenuCheckboxItem - 可选中的菜单项组件
  */
 import { computed } from "vue";
-import { CheckOutlined } from "@/components/vort/icons";
+import { CheckOutlined } from "../icons";
 
 defineOptions({ name: "VortDropdownMenuCheckboxItem" });
 

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /** Vort DropdownMenuSub - 下拉菜单子菜单组件 */
 import { computed, ref, watch, nextTick, onMounted, onBeforeUnmount } from "vue";
-import { ChevronRightOutlined } from "@/components/vort/icons";
-import { useZIndex } from "@/components/vort/composables";
+import { ChevronRightOutlined } from "../icons";
+import { useZIndex } from "../composables";
 
 defineOptions({ name: "VortDropdownMenuSub" });
 

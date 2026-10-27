@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, provide, watchEffect } from "vue";
+import { computed, inject, provide, watchEffect } from "vue";
 import type { ConfigProviderProps, ConfigProviderContext } from "./types";
 import { CONFIG_PROVIDER_KEY } from "./types";
 import { VORT_TELEPORT_CONTAINER_ID } from "../composables/useTeleportContainer";
@@ -307,9 +307,13 @@ const cssVars = computed(() => {
     return vars;
 });
 
+// 嵌套时未设置的配置沿用外层
+const parentConfigContext = inject(CONFIG_PROVIDER_KEY, undefined);
+
 // 提供配置上下文给子组件（可选，用于需要读取配置的场景）
 const configContext = computed<ConfigProviderContext>(() => ({
-    token: props.theme?.token ?? {}
+    token: props.theme?.token ?? {},
+    variant: props.variant ?? parentConfigContext?.value.variant
 }));
 
 provide(CONFIG_PROVIDER_KEY, configContext);

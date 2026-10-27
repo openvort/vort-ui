@@ -1,3 +1,6 @@
+import type { HTMLAttributes } from "vue";
+import type { FormVariant } from "../form/types";
+
 /**
  * Input 组件类型定义
  */
@@ -15,7 +18,7 @@ export type InputStatus = "error" | "warning";
  * - borderless: 无边框
  * - underlined: 下划线
  */
-export type InputVariant = "outlined" | "filled" | "borderless" | "underlined";
+export type InputVariant = FormVariant;
 
 /** Input 组件 Props */
 export interface InputProps {
@@ -27,19 +30,22 @@ export interface InputProps {
     size?: InputSize;
     /** 输入框状态 */
     status?: InputStatus;
-    /** 输入框形态变体 */
+    /** 输入框形态变体；不传时依次回退 bordered、Form、ConfigProvider */
     variant?: InputVariant;
     /** 是否禁用 */
     disabled?: boolean;
+    /** 是否有边框（兼容旧用法，false 等同 variant="borderless"，优先使用 variant） */
     bordered?: boolean;
     /** 输入框占位文本 */
     placeholder?: string;
     /** 自定义类名 */
-    class?: string;
+    class?: HTMLAttributes["class"];
     /** 可以点击清除图标删除内容 */
     allowClear?: boolean;
     /** 最大输入长度 */
     maxlength?: number;
+    /** 自定义长度算法；提供后由组件内部拦截超限输入，不使用原生 maxlength。 */
+    countStrategy?: (value: string) => number;
     /** 是否展示字数 */
     showCount?: boolean;
     /** 紧凑模式，用于 addonBefore/addonAfter 放置 Select 等组件 */
@@ -67,15 +73,15 @@ export interface InputEmits {
 }
 
 /** InputNumber 组件 Props */
-export interface InputNumberProps {
+export interface InputNumberProps<T extends number | string = number> {
     /** 当前值（v-model） */
-    modelValue?: number | null;
+    modelValue?: T | null;
     /** 默认值 */
-    defaultValue?: number;
+    defaultValue?: T;
     /** 最小值 */
-    min?: number;
+    min?: number | string;
     /** 最大值 */
-    max?: number;
+    max?: number | string;
     /** 每次改变步数，可以为小数 */
     step?: number | string;
     /** 数值精度（小数位数） */
@@ -88,14 +94,18 @@ export interface InputNumberProps {
     disabled?: boolean;
     /** 是否只读 */
     readOnly?: boolean;
-    /** 是否有边框 */
+    /** 形态变体；不传时依次回退 bordered、Form、ConfigProvider */
+    variant?: InputVariant;
+    /** 是否有边框（兼容旧用法，false 等同 variant="borderless"，优先使用 variant） */
     bordered?: boolean;
     /** 输入框占位文本 */
     placeholder?: string;
     /** 自定义类名 */
-    class?: string;
-    /** 是否隐藏控制按钮 */
+    class?: HTMLAttributes["class"];
+    /** 是否启用控制按钮；禁用、只读时不显示 */
     controls?: boolean;
+    /** 控制按钮显隐：auto 为悬停或聚焦时显示，true 为常显 */
+    handleVisible?: "auto" | true;
     /** 指定输入框展示值的格式 */
     formatter?: (value: number | string | undefined) => string;
     /** 指定从 formatter 里转换回数字的方式 */
@@ -104,7 +114,7 @@ export interface InputNumberProps {
     prefix?: string;
     /** 是否启用键盘快捷行为（上下箭头调整值） */
     keyboard?: boolean;
-    /** 是否严格校验，在失焦时校验并矫正数值 */
+    /** 字符串模式：保留十进制精度，更新事件返回字符串 */
     stringMode?: boolean;
     /** 紧凑模式，用于 addonBefore/addonAfter 放置 Select 等组件 */
     compact?: boolean;

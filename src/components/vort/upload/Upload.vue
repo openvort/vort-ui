@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
+import { useFormDisabled } from "../form/useFormDisabled";
 import {
     UploadOutlined,
     PlusOutlined,
@@ -10,8 +11,9 @@ import {
     PaperClipOutlined,
     FileOutlined,
     PictureOutlined
-} from "@/components/vort/icons";
+} from "../icons";
 import type { UploadFile, UploadChangeInfo, UploadRequestOption, UploadListType } from "./types";
+import { useLocale } from "../locale";
 
 defineOptions({ name: "VortUpload" });
 
@@ -58,7 +60,6 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
     action: "",
-    disabled: false,
     listType: "text",
     method: "post",
     multiple: false,
@@ -69,6 +70,9 @@ const props = withDefaults(defineProps<Props>(), {
     openFileDialogOnClick: true,
     directory: false
 });
+
+const mergedDisabled = useFormDisabled(() => props.disabled);
+const { t } = useLocale("Upload");
 
 const emit = defineEmits<{
     /** 文件状态改变的回调 */
@@ -281,12 +285,15 @@ const uploadFile = async (file: File) => {
                     }
                     updateFileStatus(uploadFile.uid, { status: "done", response, percent: 100 });
                 } else {
-                    updateFileStatus(uploadFile.uid, { status: "error", error: new Error(xhr.statusText) });
+                    updateFileStatus(uploadFile.uid, {
+                        status: "error",
+                        error: new Error(t("upload_failed"), { cause: { status: xhr.status, statusText: xhr.statusText } })
+                    });
                 }
             };
 
             xhr.onerror = () => {
-                updateFileStatus(uploadFile.uid, { status: "error", error: new Error("Upload failed") });
+                updateFileStatus(uploadFile.uid, { status: "error", error: new Error(t("network_failed")) });
             };
 
             xhr.open(props.method.toUpperCase(), props.action);
@@ -301,7 +308,7 @@ const uploadFile = async (file: File) => {
             xhr.withCredentials = props.withCredentials;
             xhr.send(formData);
         } catch (error) {
-            updateFileStatus(uploadFile.uid, { status: "error", error });
+            updateFileStatus(uploadFile.uid, { status: "error", error: new Error(t("upload_failed"), { cause: error }) });
         }
     } else {
         // 没有 action，直接标记为完成
@@ -356,14 +363,14 @@ const handleDownload = (file: UploadFile) => {
 
 // 点击上传区域
 const handleClick = () => {
-    if (props.disabled || !props.openFileDialogOnClick) return;
+    if (mergedDisabled.value || !props.openFileDialogOnClick) return;
     inputRef.value?.click();
 };
 
 // 拖拽事件
 const handleDragEnter = (e: DragEvent) => {
     e.preventDefault();
-    if (props.disabled) return;
+    if (mergedDisabled.value) return;
     isDragging.value = true;
 };
 
@@ -379,7 +386,7 @@ const handleDragOver = (e: DragEvent) => {
 const handleDrop = async (e: DragEvent) => {
     e.preventDefault();
     isDragging.value = false;
-    if (props.disabled) return;
+    if (mergedDisabled.value) return;
 
     emit("drop", e);
 
@@ -409,7 +416,7 @@ const isCardType = computed(() => props.listType === "picture-card" || props.lis
 // 容器样式
 const containerClass = computed(() => {
     const classes = ["vort-upload", `vort-upload-${props.listType}`];
-    if (props.disabled) classes.push("vort-upload-disabled");
+    if (mergedDisabled.value) classes.push("vort-upload-disabled");
     if (isDragging.value) classes.push("vort-upload-drag-hover");
     if (props.class) classes.push(props.class);
     return classes;
@@ -424,7 +431,7 @@ const containerClass = computed(() => {
             type="file"
             :accept="accept"
             :multiple="multiple"
-            :disabled="disabled"
+            :disabled="mergedDisabled"
             :webkitdirectory="directory || undefined"
             class="vort-upload-input"
             @change="handleFileChange"
@@ -512,7 +519,7 @@ const containerClass = computed(() => {
                 @drop="handleDrop"
             >
                 <slot>
-                    <button type="button" class="vort-upload-btn" :disabled="disabled">
+                    <button type="button" class="vort-upload-btn" :disabled="mergedDisabled">
                         <UploadOutlined />
                         <span>{{ placeholder }}</span>
                     </button>
@@ -636,7 +643,7 @@ const containerClass = computed(() => {
 .vort-upload-list-item-thumb {
     width: 24px;
     height: 24px;
-    object-fit: cover;
+    object-fit: contain;
     border-radius: var(--vort-border-radius-sm, 2px);
 }
 

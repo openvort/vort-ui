@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, onMounted, onUnmounted, getCurrentInstance, type Ref } from "vue";
+import { useFormDisabled } from "../form/useFormDisabled";
 
 defineOptions({ name: "VortRadioButton" });
 
@@ -14,9 +15,7 @@ interface Props {
     class?: string;
 }
 
-const props = withDefaults(defineProps<Props>(), {
-    disabled: false
-});
+const props = defineProps<Props>();
 
 // 获取当前组件实例的 uid，用于注册机制
 const instance = getCurrentInstance();
@@ -64,13 +63,11 @@ const isChecked = computed(() => {
     return false;
 });
 
-// 是否禁用
-const isDisabled = computed(() => {
-    if (radioGroupContext) {
-        return radioGroupContext.disabled.value || props.disabled;
-    }
-    return props.disabled;
-});
+// disabled 合并：自身 prop > Group disabled > Form 级 disabled > false
+const isDisabled = useFormDisabled(
+    () => props.disabled,
+    () => radioGroupContext?.disabled.value
+);
 
 // 尺寸
 const size = computed(() => {

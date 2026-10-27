@@ -1,0 +1,5 @@
+/package.json @openvort
+/pnpm-workspace.yaml @openvort
+/.npmrc @openvort
+/pnpm-lock.yaml @openvort
+/.github/ @openvort

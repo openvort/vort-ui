@@ -1,16 +1,22 @@
 <script setup lang="ts">
 import { computed, provide, toRef, watch, ref, reactive } from "vue";
-import type { RadioGroupProps, RadioOption, RadioOptionType } from "./types";
+import { useFormDisabled } from "../form/useFormDisabled";
+import type { RadioGroupProps, RadioOptionType } from "./types";
+import Radio from "./Radio.vue";
+import RadioButton from "./RadioButton.vue";
 
 defineOptions({ name: "VortRadioGroup" });
 
 /** Vort RadioGroup - 单选框组组件 */
 
 const props = withDefaults(defineProps<RadioGroupProps>(), {
-    disabled: false,
     size: "middle",
     buttonStyle: "outline"
 });
+
+/** disabled 合并：组件 prop > Form 级 disabled > 默认 false。
+ *  传递给子 Radio/RadioButton 的 context 使用合并后的值，让 Group 自身也跟随 Form。 */
+const mergedDisabled = useFormDisabled(() => props.disabled);
 
 const emit = defineEmits<{
     "update:modelValue": [value: string | number];
@@ -80,7 +86,7 @@ const getButtonPosition = (uid: number) => {
 // 提供给子组件的上下文
 provide("radioGroupContext", {
     name: toRef(props, "name"),
-    disabled: toRef(props, "disabled"),
+    disabled: mergedDisabled,
     size: toRef(props, "size"),
     buttonStyle: toRef(props, "buttonStyle"),
     optionType: actualOptionType,
@@ -151,18 +157,6 @@ const groupClasses = computed(() => {
     </div>
 </template>
 
-<script lang="ts">
-import Radio from "./Radio.vue";
-import RadioButton from "./RadioButton.vue";
-
-export default {
-    components: {
-        Radio,
-        RadioButton
-    }
-};
-</script>
-
 <style scoped>
 .vort-radio-group {
     display: inline-flex;
@@ -170,7 +164,7 @@ export default {
 }
 
 .vort-radio-group-gap-default {
-    gap: 24px;
+    gap: 10px 24px;
 }
 
 .vort-radio-group-gap-plain {

@@ -10,8 +10,8 @@ import {
     DownloadOutlined,
     ChevronLeftOutlined,
     ChevronRightOutlined
-} from "@/components/vort/icons";
-import { getVortTeleportTo, useOverlayStack, useZIndex } from "@/components/vort/composables";
+} from "../icons";
+import { getVortTeleportTo, useOverlayStack, useZIndex } from "../composables";
 
 defineOptions({ name: "VortImagePreviewGroup" });
 

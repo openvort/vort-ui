@@ -1,4 +1,4 @@
-import { inject, type InjectionKey, computed, type ComputedRef, type Ref, ref, unref, isRef } from "vue";
+import { inject, type InjectionKey, computed, type ComputedRef, type Ref, ref, unref } from "vue";
 import type { Locale, LocaleComponentName } from "./types";
 import zhCN from "./zh-CN";
 

@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, useAttrs, type StyleValue } from "vue";
 import VortInput from "./Input.vue";
-import VortButton from "@/components/vort/button/Button.vue";
-import { SearchOutlined } from "@/components/vort/icons";
+import VortButton from "../button/Button.vue";
+import { SearchOutlined } from "../icons";
+import { useFormDisabled } from "../form/useFormDisabled";
+import { useFormVariant } from "../form/useFormVariant";
 import type { InputSearchProps } from "./types";
 
 defineOptions({ name: "VortInputSearch", inheritAttrs: false });
@@ -11,12 +13,13 @@ defineOptions({ name: "VortInputSearch", inheritAttrs: false });
 
 const props = withDefaults(defineProps<InputSearchProps>(), {
     size: "middle",
-    disabled: false,
     enterButton: false,
     loading: false,
     allowClear: false,
-    variant: "outlined"
+    bordered: true
 });
+
+const mergedDisabled = useFormDisabled(() => props.disabled);
 
 const emit = defineEmits<{
     "update:modelValue": [value: string];
@@ -40,6 +43,12 @@ const inputAttrs = computed(() => {
 // 内部值
 const innerValue = computed(() => String(props.modelValue ?? props.defaultValue ?? ""));
 
+// 在外层解析形态变体，内层 Input 与搜索按钮共用同一结果
+const mergedVariant = useFormVariant(
+    () => props.variant,
+    () => props.bordered
+);
+
 // 是否使用 primary 样式按钮
 const isPrimaryButton = computed(() => props.enterButton === true || typeof props.enterButton === "string");
 
@@ -57,8 +66,8 @@ const inputProps = computed(() => ({
     defaultValue: props.defaultValue,
     size: props.size,
     status: props.status,
-    variant: props.variant,
-    disabled: props.disabled,
+    variant: mergedVariant.value,
+    disabled: mergedDisabled.value,
     placeholder: props.placeholder,
     allowClear: props.allowClear,
     addonButtonMode: true // 使用按钮模式的 addon
@@ -77,7 +86,7 @@ const wrapperClasses = computed(() => {
 /** Button 类名 */
 const buttonClasses = computed(() => {
     const classes = ["vort-input-search-button"];
-    if (props.variant === "underlined") {
+    if (mergedVariant.value === "underlined") {
         classes.push("vort-input-search-button-underlined");
         if (!isPrimaryButton.value) classes.push("vort-input-search-button-underlined-default");
     }
@@ -111,7 +120,7 @@ const handleClear = () => {
 };
 
 const handleSearch = (event?: MouseEvent | KeyboardEvent) => {
-    if (!props.disabled && !props.loading) {
+    if (!mergedDisabled.value && !props.loading) {
         emit("search", innerValue.value, event);
     }
 };
@@ -155,7 +164,7 @@ defineExpose({
                 <VortButton
                     :type="isPrimaryButton ? 'primary' : 'default'"
                     :size="size"
-                    :disabled="disabled"
+                    :disabled="mergedDisabled"
                     :loading="loading"
                     :class="buttonClasses"
                     @click="handleSearch"
@@ -250,13 +259,27 @@ defineExpose({
 
 /* underlined + default 按钮：底部线条对齐 */
 .vort-input-search-button-underlined-default {
-    border: none !important;
-    border-bottom: 1px solid var(--vort-border, #d9d9d9) !important;
+    border: 1px solid transparent !important;
+    border-bottom-color: var(--vort-border, #d9d9d9) !important;
     background: transparent !important;
 }
 
 .vort-input-search-button-underlined-default:hover:not(:disabled) {
     border-bottom-color: var(--vort-primary, #1456f0) !important;
     background: transparent !important;
+}
+
+/* 移动端：隐藏右侧搜索按钮，表现为普通输入框（下方通常已有搜索/重置） */
+@media only screen and (max-width: 767px) {
+    .vort-input-search :deep(.vort-input-addon-after) {
+        display: none;
+    }
+
+    .vort-input-search :deep(.vort-input-wrapper),
+    .vort-input-search :deep(.vort-input) {
+        border-top-right-radius: var(--vort-radius, 6px) !important;
+        border-bottom-right-radius: var(--vort-radius, 6px) !important;
+        width: 100% !important;
+    }
 }
 </style>

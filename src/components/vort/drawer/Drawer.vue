@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick, reactive } from "vue";
-import { CloseOutlined } from "@/components/vort/icons";
-import { getVortTeleportTo, useZIndexProviderValue, useOverlayStack } from "@/components/vort/composables";
+import { ref, computed, watch, onMounted, onUnmounted, nextTick, reactive, useId } from "vue";
+import { CloseOutlined } from "../icons";
+import { getVortTeleportTo, useZIndexProviderValue, useOverlayStack } from "../composables";
 import { useLocale } from "../locale";
+import { resetFormItemStatus } from "../form/useFormItemStatus";
 
 defineOptions({ name: "VortDrawer" });
 
@@ -13,6 +14,8 @@ type DrawerPlacement = "top" | "right" | "bottom" | "left";
 interface Props {
     /** 是否显示 */
     open?: boolean;
+    /** 是否提前挂载内容但保持不可见；不触发打开动画、遮罩和抽屉栈行为 */
+    forceRender?: boolean;
     /** 标题 */
     title?: string;
     /** 抽屉方向 */
@@ -35,18 +38,21 @@ interface Props {
     footer?: boolean;
     /** body 样式 */
     bodyStyle?: Record<string, string>;
+    /** body 区域是否无内边距，默认 false */
+    bodyNoPadding?: boolean;
     /** 内容区域背景色（仅 body 区域），默认白色 */
     contentBg?: string;
     /** 嵌套抽屉偏移距离 */
     push?: number | false;
     /** 是否支持键盘 ESC 关闭 */
     keyboard?: boolean;
-    /** 销毁时是否卸载子组件 */
+    /** 关闭动画结束后销毁内容，默认 true；显式 false 保留子组件状态。 */
     destroyOnClose?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
     open: false,
+    forceRender: false,
     placement: "right",
     width: 378,
     height: 378,
@@ -57,7 +63,8 @@ const props = withDefaults(defineProps<Props>(), {
     footer: false,
     push: 180,
     keyboard: true,
-    destroyOnClose: false,
+    destroyOnClose: true,
+    bodyNoPadding: false,
     contentBg: "#fff"
 });
 
@@ -69,6 +76,9 @@ const overlay = useOverlayStack();
 
 // 国际化
 const { t } = useLocale("Drawer");
+
+// 抽屉内容不继承外层 FormItem 的校验状态
+resetFormItemStatus();
 
 const emit = defineEmits<{
     "update:open": [value: boolean];
@@ -96,6 +106,7 @@ const drawerId = Symbol("drawer");
 
 // 是否有子抽屉打开（用于触发偏移动画）
 const hasChildOpen = ref(false);
+const overlayRegistered = ref(false);
 
 // 设置子抽屉状态的方法
 const setChildOpen = (value: boolean) => {
@@ -104,6 +115,7 @@ const setChildOpen = (value: boolean) => {
 
 // 注册到全局栈
 const registerToStack = () => {
+    if (overlayRegistered.value) return;
     // 通知前一个抽屉有新的子抽屉打开
     if (globalDrawerStack.length > 0) {
         const parentDrawer = globalDrawerStack[globalDrawerStack.length - 1];
@@ -117,6 +129,7 @@ const registerToStack = () => {
         zIndex: props.zIndex,
         setChildOpen
     });
+    overlayRegistered.value = true;
 };
 
 // 从全局栈移除
@@ -133,15 +146,19 @@ const unregisterFromStack = () => {
             parentDrawer?.setChildOpen(hasOtherChild);
         }
     }
+    overlayRegistered.value = false;
 };
 
 // ==================== 状态管理 ====================
 const isVisible = ref(false);
 const shouldRenderTeleport = ref(false); // 控制 Teleport 是否渲染，避免产生 <!--v-if--> 注释
 const isAnimating = ref(false);
+// 防止快速关开时，旧的 requestAnimationFrame 在新一轮打开后注册过期的遮罩和抽屉栈。
+const openGeneration = ref(0);
 // 控制抽屉面板显示（用于触发进入动画）
 const showPanel = ref(false);
 const teleportTo = computed(() => getVortTeleportTo());
+const titleId = `vort-drawer-title-${useId()}`;
 
 // 计算尺寸
 const sizeValue = computed(() => {
@@ -203,6 +220,7 @@ const maskStyle = computed(() => ({
 // 内容区样式（兼容原有 bodyStyle；bodyStyle 优先级更高）
 const drawerBodyStyle = computed(() => ({
     background: props.contentBg,
+    ...(props.bodyNoPadding ? { padding: "0" } : {}),
     ...(props.bodyStyle || {})
 }));
 
@@ -222,14 +240,16 @@ const handleMaskClick = () => {
 
 // 动画结束回调
 const handleAfterEnter = () => {
+    if (!props.open) return;
     isAnimating.value = false;
     emit("afterOpenChange", true);
 };
 
 const handleAfterLeave = () => {
+    if (props.open) return;
     isVisible.value = false;
     isAnimating.value = false;
-    shouldRenderTeleport.value = false; // 动画结束后移除 Teleport
+    shouldRenderTeleport.value = !props.destroyOnClose;
     emit("afterOpenChange", false);
 
     // 如果没有其他抽屉，恢复 body 滚动
@@ -243,6 +263,7 @@ watch(
     () => props.open,
     async (newVal, oldVal) => {
         if (newVal) {
+            const generation = ++openGeneration.value;
             // 打开抽屉
             shouldRenderTeleport.value = true; // 先渲染 Teleport
             isVisible.value = true;
@@ -252,6 +273,7 @@ watch(
             // 等待 DOM 更新后再显示面板，确保触发进入动画
             await nextTick();
             requestAnimationFrame(() => {
+                if (generation !== openGeneration.value || !props.open) return;
                 showPanel.value = true;
                 registerToStack();
                 overlay.push(() => {
@@ -259,6 +281,8 @@ watch(
                 });
             });
         } else if (oldVal && !newVal) {
+            openGeneration.value++;
+            const wasPanelVisible = showPanel.value;
             // 关闭抽屉
             isAnimating.value = true;
             showPanel.value = false;
@@ -266,18 +290,31 @@ watch(
             // 此时子抽屉关闭时无法再回调到父抽屉 setChildOpen(false)，会导致父抽屉下次打开仍残留 push 偏移。
             // 在关闭父抽屉时强制清理 hasChildOpen，避免右侧空隙（translateX push）残留。
             hasChildOpen.value = false;
+            if (overlayRegistered.value) overlay.pop();
             unregisterFromStack();
-            overlay.pop();
+
+            // 如果首帧动画还没开始就关闭，Vue 不会触发 after-leave，需主动完成清理。
+            if (!wasPanelVisible) {
+                isVisible.value = false;
+                isAnimating.value = false;
+                shouldRenderTeleport.value = props.forceRender || !props.destroyOnClose;
+                if (globalDrawerStack.length === 0) {
+                    document.body.style.overflow = "";
+                }
+                emit("afterOpenChange", false);
+            }
         }
     }
 );
 
 onMounted(() => {
     if (props.open) {
+        const generation = ++openGeneration.value;
         shouldRenderTeleport.value = true;
         isVisible.value = true;
         document.body.style.overflow = "hidden";
         requestAnimationFrame(() => {
+            if (generation !== openGeneration.value || !props.open) return;
             showPanel.value = true;
             registerToStack();
             overlay.push(() => {
@@ -288,7 +325,8 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-    overlay.pop();
+    openGeneration.value++;
+    if (overlayRegistered.value) overlay.pop();
     unregisterFromStack();
 
     // 恢复滚动
@@ -299,8 +337,8 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <Teleport v-if="shouldRenderTeleport" :to="teleportTo">
-        <div v-if="isVisible || (open && !destroyOnClose)" v-show="isVisible" :class="['vort-drawer-root', props.class]">
+    <Teleport v-if="shouldRenderTeleport || forceRender" :to="teleportTo">
+        <div v-if="isVisible || !destroyOnClose || forceRender" v-show="open || (isVisible && !forceRender)" :class="['vort-drawer-root', props.class]">
             <!-- 遮罩 -->
             <Transition name="vort-drawer-mask">
                 <div v-if="mask" v-show="showPanel" class="vort-drawer-mask" :style="maskStyle" @click="handleMaskClick" />
@@ -308,10 +346,17 @@ onUnmounted(() => {
 
             <!-- 抽屉主体 -->
             <Transition :name="`vort-drawer-panel-${placement}`" @after-enter="handleAfterEnter" @after-leave="handleAfterLeave">
-                <div v-show="showPanel" :class="['vort-drawer', `vort-drawer-${placement}`]" :style="drawerStyle" role="dialog" aria-modal="true">
+                <div
+                    v-show="showPanel"
+                    :class="['vort-drawer', `vort-drawer-${placement}`]"
+                    :style="drawerStyle"
+                    role="dialog"
+                    aria-modal="true"
+                    :aria-labelledby="title || $slots.title ? titleId : undefined"
+                >
                     <!-- 头部 -->
                     <div v-if="title || closable || $slots.title" class="vort-drawer-header">
-                        <div class="vort-drawer-title">
+                        <div :id="titleId" class="vort-drawer-title">
                             <slot name="title">{{ title }}</slot>
                         </div>
                         <button v-if="closable" type="button" class="vort-drawer-close" :aria-label="t('close')" @click="handleClose">

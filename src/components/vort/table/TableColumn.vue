@@ -29,7 +29,8 @@ export interface TableColumnProps {
 </script>
 
 <script setup lang="ts" generic="T = any">
-import { inject, provide, onMounted, onUnmounted, useSlots, getCurrentInstance, watch, ref, nextTick } from "vue";
+import { inject, provide, onMounted, onUnmounted, onErrorCaptured, useSlots, getCurrentInstance, watch, ref, nextTick } from "vue";
+import { ColumnSlotProbe } from "./renderers";
 import type { TableColumn, TableCellScope, TableHeaderScope, TableColumnContext } from "./types";
 import { TABLE_INJECTION_KEY, TABLE_COLUMN_INJECTION_KEY } from "./types";
 
@@ -273,12 +274,23 @@ watch(
 onUnmounted(() => {
     unregisterColumn();
 });
+
+// 探测渲染只为发现子列，单元格模板对着空行对象抛错很常见（row.a.b），吞掉即可；真实渲染在 Table 里另走 CellRenderer
+onErrorCaptured((_err, _inst, info) => {
+    // Vue 生产构建用错误文档 URL 代替开发期文案，render 的错误码为 1。
+    if (info === "render function" || info === "https://vuejs.org/error-reference/#runtime-1") {
+        return false;
+    }
+});
+
+const probeDefaultSlot = () => slots.default?.({ value: undefined, row: {} as T, index: 0, column: {} as TableColumn<T> });
+const probeHeaderSlot = () => slots.header?.({ column: {} as TableColumn<T> });
 </script>
 
 <template>
     <span ref="slotContainerRef" v-show="false" :data-vort-column-uid="uid" style="display: none">
-        <!-- 默认插槽：可能是单元格内容，也可能是嵌套的子 TableColumn -->
-        <slot :value="undefined" :row="{} as T" :index="0" :column="{} as TableColumn<T>" />
-        <slot name="header" :column="{} as TableColumn<T>" />
+        <!-- 默认插槽：可能是单元格内容，也可能是嵌套的子 TableColumn。放进 ColumnSlotProbe 里渲染，模板读不到真实行数据抛错时由上面的 onErrorCaptured 吞掉 -->
+        <ColumnSlotProbe :render="probeDefaultSlot" />
+        <ColumnSlotProbe v-if="slots.header" :render="probeHeaderSlot" />
     </span>
 </template>

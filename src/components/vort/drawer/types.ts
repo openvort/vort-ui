@@ -9,6 +9,8 @@ export type DrawerPlacement = "top" | "right" | "bottom" | "left";
 export interface DrawerProps {
     /** 是否显示 */
     open?: boolean;
+    /** 是否提前挂载内容但保持不可见；不触发打开动画、遮罩和抽屉栈行为 */
+    forceRender?: boolean;
     /** 标题 */
     title?: string;
     /** 抽屉方向 */
@@ -31,6 +33,8 @@ export interface DrawerProps {
     footer?: boolean;
     /** body 样式 */
     bodyStyle?: Record<string, string>;
+    /** body 区域是否无内边距，默认 false */
+    bodyNoPadding?: boolean;
     /** 内容区域背景色（仅 body 区域），默认白色 */
     contentBg?: string;
     /** 嵌套抽屉偏移距离 */

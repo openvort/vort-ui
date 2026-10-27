@@ -7,6 +7,9 @@ export * from "./locale";
 // 图标
 export * from "./icons";
 
+// 浮层公共类型（业务组件需要声明 placement/trigger 时使用）
+export type { FloatingPlacement, FloatingTrigger } from "./composables";
+
 // UI 组件统一导出
 export * from "./config-provider";
 export * from "./anchor";
@@ -38,6 +41,7 @@ export * from "./pagination";
 export * from "./image";
 export * from "./popconfirm";
 export * from "./popover";
+export * from "./result";
 export * from "./tag";
 export * from "./tooltip";
 export * from "./upload";

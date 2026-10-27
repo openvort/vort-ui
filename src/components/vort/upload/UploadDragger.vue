@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import { InboxOutlined } from "@/components/vort/icons";
+import { InboxOutlined } from "../icons";
+import { useFormDisabled } from "../form/useFormDisabled";
 import Upload from "./Upload.vue";
 import type { UploadFile, UploadChangeInfo, UploadRequestOption } from "./types";
 
@@ -49,7 +50,6 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
     action: "",
-    disabled: false,
     method: "post",
     multiple: true,
     name: "file",
@@ -58,6 +58,8 @@ const props = withDefaults(defineProps<Props>(), {
     withCredentials: false,
     directory: false
 });
+
+const mergedDisabled = useFormDisabled(() => props.disabled);
 
 const emit = defineEmits<{
     /** 文件状态改变的回调 */
@@ -87,7 +89,7 @@ const isDragging = ref(false);
 const handleDragEnter = (e: DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (props.disabled) return;
+    if (mergedDisabled.value) return;
     isDragging.value = true;
 };
 
@@ -110,7 +112,7 @@ const handleDrop = (e: DragEvent) => {
 // 容器样式
 const containerClass = computed(() => {
     const classes = ["vort-upload-dragger"];
-    if (props.disabled) classes.push("vort-upload-dragger-disabled");
+    if (mergedDisabled.value) classes.push("vort-upload-dragger-disabled");
     if (isDragging.value) classes.push("vort-upload-dragger-drag-hover");
     if (props.class) classes.push(props.class);
     return classes;
@@ -127,6 +129,7 @@ const heightStyle = computed(() => {
 <template>
     <Upload
         v-bind="props"
+        :disabled="mergedDisabled"
         :before-upload="beforeUpload"
         :custom-request="customRequest"
         list-type="text"

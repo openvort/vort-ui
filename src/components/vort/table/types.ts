@@ -188,6 +188,8 @@ export interface TableProps<T = any> {
     pagination?: TablePagination | false;
     rowSelection?: TableRowSelection<any>;
     scroll?: TableScroll;
+    /** 受控的排序状态 */
+    sortState?: SortState;
     minHeight?: number | string;
     maxHeight?: number | string;
     emptyText?: string;

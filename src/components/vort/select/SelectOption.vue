@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { inject, onMounted, onBeforeUnmount, useSlots, computed, type VNode, type Slot } from "vue";
+import { Comment, inject, onMounted, onBeforeUnmount, useSlots, computed, watch, type VNode } from "vue";
 import type { SelectOptionContext } from "./types";
 
 /**
@@ -19,7 +19,7 @@ import type { SelectOptionContext } from "./types";
 defineOptions({ name: "VortSelectOption" });
 
 defineSlots<{
-    default?: () => unknown;
+    default?: () => VNode[];
 }>();
 
 interface Props {
@@ -31,7 +31,7 @@ interface Props {
     disabled?: boolean;
 }
 
-export interface SelectOptionProps extends Props {}
+export type SelectOptionProps = Props;
 
 const props = withDefaults(defineProps<Props>(), {
     label: undefined,
@@ -70,6 +70,8 @@ const computedLabel = computed(() => {
         const extractText = (nodes: VNode[]): string => {
             return nodes
                 .map((node) => {
+                    // 注释节点不是文字：v-if 不成立时留下的占位注释内容是 "v-if"，不能拼进 label
+                    if (node.type === Comment) return "";
                     if (typeof node.children === "string") {
                         return node.children;
                     }
@@ -108,16 +110,27 @@ const renderFunction = computed(() => {
 // 注入父组件提供的注册方法
 const selectContext = inject<SelectOptionContext | null>("vortSelectContext", null);
 
+// 向父组件同步当前选项数据
+const syncOption = () => {
+    selectContext?.registerOption({
+        value: props.value,
+        label: computedLabel.value,
+        disabled: props.disabled,
+        render: renderFunction.value
+    });
+};
+
 // 组件挂载时注册选项
 onMounted(() => {
-    if (selectContext) {
-        selectContext.registerOption({
-            value: props.value,
-            label: computedLabel.value,
-            disabled: props.disabled,
-            render: renderFunction.value
-        });
+    syncOption();
+});
+
+// label / value / disabled / 渲染内容动态变化时，重新注册以保持父级显示同步
+watch([computedLabel, () => props.value, () => props.disabled, renderFunction], ([, newValue], [, oldValue]) => {
+    if (oldValue !== undefined && oldValue !== newValue) {
+        selectContext?.unregisterOption(oldValue);
     }
+    syncOption();
 });
 
 // 组件卸载时注销选项
@@ -128,8 +141,9 @@ onBeforeUnmount(() => {
 });
 </script>
 
+<!-- eslint-disable vue/valid-template-root -->
 <template>
-    <!-- 
+    <!--
         此组件不渲染任何内容，仅作为选项数据的载体
         实际渲染由父组件 Select 完成
     -->

@@ -1,6 +1,7 @@
 /**
  * Select 组件类型定义
  */
+import type { FormVariant } from "../form/types";
 
 /** 选择器尺寸 */
 export type SelectSize = "large" | "middle" | "small";
@@ -18,7 +19,7 @@ export type SelectMode = "multiple" | "tags";
  * - borderless: 无边框
  * - underlined: 下划线
  */
-export type SelectVariant = "outlined" | "filled" | "borderless" | "underlined";
+export type SelectVariant = FormVariant;
 
 /** 选项接口 */
 export interface SelectOption {
@@ -78,9 +79,9 @@ export interface SelectProps {
     getPopupContainer?: () => HTMLElement;
     /** 下拉面板额外 class */
     popupClass?: string;
-    /** 形态变体 */
+    /** 形态变体；不传时依次回退 bordered、Form、ConfigProvider */
     variant?: SelectVariant;
-    /** 是否有边框（兼容旧用法，优先使用 variant） */
+    /** 是否有边框（兼容旧用法，false 等同 variant="borderless"，优先使用 variant） */
     bordered?: boolean;
 }
 

@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted, useAttrs } from "vue";
-import { CalendarOutlined, CloseCircleFilled } from "@/components/vort/icons";
-import { Button as VortButton } from "@/components/vort/button";
-import { getVortPopupContainer, useZIndex } from "@/components/vort/composables";
-import { useLocale } from "@/components/vort/locale/useLocale";
+import { CalendarOutlined, CloseCircleFilled } from "../icons";
+import { Button as VortButton } from "../button";
+import { getVortPopupContainer, useZIndex } from "../composables";
+import { useLocale } from "../locale/useLocale";
+import { useFormDisabled } from "../form/useFormDisabled";
+import { useFormItemStatus } from "../form/useFormItemStatus";
+import { useFormVariant } from "../form/useFormVariant";
+import type { FormVariant } from "../form/types";
 
 defineOptions({ name: "VortRangePicker", inheritAttrs: false });
 
@@ -66,6 +70,8 @@ interface Props {
     disabledDate?: (currentDate: Date) => boolean;
     /** 校验状态 */
     status?: DatePickerStatus;
+    /** 形态变体；不传时依次回退 Form、ConfigProvider */
+    variant?: FormVariant;
     /** 控制弹层显示 */
     open?: boolean;
     /** 菜单渲染父节点。默认渲染到 body 上，如果你遇到菜单滚动定位问题，试试修改为滚动的区域，并相对其定位 */
@@ -92,7 +98,6 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
     size: "middle",
-    disabled: false,
     placeholder: undefined,
     format: undefined,
     allowClear: true,
@@ -112,6 +117,10 @@ const emit = defineEmits<{
     calendarChange: [dates: RangeValue, dateStrings: [string, string], info: { range: "start" | "end" }];
 }>();
 
+const mergedDisabled = useFormDisabled(() => props.disabled);
+const mergedStatus = useFormItemStatus(() => props.status);
+const mergedVariant = useFormVariant(() => props.variant);
+
 // ============ 状态 ============
 const isOpen = ref(false);
 const shouldRenderTeleport = ref(false); // 控制 Teleport 是否渲染，避免产生 <!--v-if--> 注释
@@ -123,6 +132,8 @@ const position = ref({ top: 0, left: 0 });
 
 // 选择状态: 'start' | 'end'
 const selectingType = ref<"start" | "end">("start");
+// 从已有完整区间的某一端进入编辑时，保留另一端日期
+const editingExistingRange = ref(false);
 
 // 当前面板模式（左右面板独立）
 const leftPanelMode = ref<PickerMode>(props.picker);
@@ -384,11 +395,11 @@ const isSecondDisabled = (second: number, selectedHour: number, selectedMinute: 
 
 /** 触发器类名 */
 const triggerClasses = computed(() => {
-    const classes = ["vort-rangepicker-selector", `vort-rangepicker-${props.size}`];
+    const classes = ["vort-rangepicker-selector", `vort-rangepicker-${props.size}`, `vort-rangepicker-${mergedVariant.value}`];
 
     if (props.showTime) classes.push("vort-rangepicker-showtime");
-    if (props.status) classes.push(`vort-rangepicker-${props.status}`);
-    if (props.disabled) classes.push("vort-rangepicker-disabled");
+    if (mergedStatus.value) classes.push(`vort-rangepicker-${mergedStatus.value}`);
+    if (mergedDisabled.value) classes.push("vort-rangepicker-disabled");
     if (isFocused.value || isOpen.value) classes.push("vort-rangepicker-focused");
     if (props.class) classes.push(props.class);
 
@@ -414,7 +425,7 @@ const getInputClasses = (type: "start" | "end", hasValue: boolean) => {
 
 // 是否显示清除按钮
 const showClearButton = computed(() => {
-    return props.allowClear && !props.disabled && (startDate.value || endDate.value) && isHovered.value;
+    return props.allowClear && !mergedDisabled.value && (startDate.value || endDate.value) && isHovered.value;
 });
 
 // ============ 面板定位 ============
@@ -552,7 +563,8 @@ const ensureRightPanelAfterLeft = () => {
 };
 
 const openPanel = () => {
-    if (props.disabled) return;
+    if (mergedDisabled.value) return;
+    editingExistingRange.value = false;
     shouldRenderTeleport.value = true; // 先渲染 Teleport
     isOpen.value = true;
     emit("update:open", true);
@@ -641,6 +653,7 @@ const openPanel = () => {
 const closePanel = () => {
     isOpen.value = false;
     hoveredDate.value = null;
+    editingExistingRange.value = false;
     emit("update:open", false);
     emit("openChange", false);
 };
@@ -841,6 +854,32 @@ const selectDate = (date: Date) => {
     if (props.disabledDate?.(date)) return;
 
     const newDate = new Date(date);
+
+    if (editingExistingRange.value && startDate.value && endDate.value) {
+        if (props.showTime) {
+            if (selectingType.value === "start") newDate.setHours(startHour.value, startMinute.value, startSecond.value, 0);
+            else newDate.setHours(endHour.value, endMinute.value, endSecond.value, 0);
+        } else {
+            newDate.setHours(0, 0, 0, 0);
+        }
+
+        let finalStart = selectingType.value === "start" ? newDate : new Date(startDate.value);
+        let finalEnd = selectingType.value === "end" ? newDate : new Date(endDate.value);
+        if (finalStart.getTime() > finalEnd.getTime()) {
+            [finalStart, finalEnd] = [finalEnd, finalStart];
+        }
+
+        const editedRange = selectingType.value;
+        const newValue: RangeValue = [finalStart, finalEnd];
+        emit("update:modelValue", newValue);
+        emit("calendarChange", newValue, [formatDate(finalStart), formatDate(finalEnd)], { range: editedRange });
+        editingExistingRange.value = false;
+        if (!props.showTime) {
+            emit("change", newValue, [formatDate(finalStart), formatDate(finalEnd)]);
+            closePanel();
+        }
+        return;
+    }
 
     if (selectingType.value === "start") {
         // 选择开始日期，保留时间
@@ -1254,11 +1293,12 @@ const transformOrigin = computed(() => {
 
 // 点击输入框区域
 const handleInputClick = (type: "start" | "end") => {
-    if (props.disabled) return;
-    selectingType.value = type;
+    if (mergedDisabled.value) return;
     if (!isOpen.value) {
         openPanel();
     }
+    selectingType.value = type;
+    editingExistingRange.value = !!startDate.value && !!endDate.value;
 };
 
 // 暴露方法
@@ -1305,474 +1345,474 @@ defineExpose({
                 <CloseCircleFilled />
             </span>
         </span>
+
+        <!-- 日期面板：Teleport 放在根元素内，根节点保持单个元素，父组件 scoped 样式才能落到触发器上 -->
+        <Teleport v-if="shouldRenderTeleport" :to="popupContainer">
+            <Transition name="vort-datepicker" appear @after-leave="handleAfterLeave">
+                <div
+                    v-if="isOpen"
+                    ref="panelRef"
+                    class="vort-rangepicker-panel"
+                    :class="{ 'vort-rangepicker-panel-showtime': showTime }"
+                    :style="{ ...panelStyle, '--transform-origin': transformOrigin }"
+                >
+                    <div class="vort-rangepicker-panel-body">
+                        <!-- 预设区域（与 Ant Design 一致，左侧垂直排列） -->
+                        <div v-if="hasPresets" class="vort-rangepicker-presets">
+                            <button
+                                v-for="preset in presets"
+                                :key="preset.label"
+                                type="button"
+                                class="vort-rangepicker-presets-item"
+                                :class="isPresetActive(preset) && 'vort-rangepicker-presets-item-active'"
+                                @click="applyPresetRange(preset)"
+                                @mousedown.prevent
+                            >
+                                {{ preset.label }}
+                            </button>
+                        </div>
+                        <div class="vort-rangepicker-panels">
+                            <!-- 左侧面板 -->
+                            <div class="vort-rangepicker-panel-left">
+                                <!-- 日期选择区域 -->
+                                <div class="vort-datepicker-date-panel">
+                                    <!-- 日期选择面板 -->
+                                    <template v-if="leftPanelMode === 'date'">
+                                        <!-- 头部 -->
+                                        <div class="vort-datepicker-header">
+                                            <button type="button" class="vort-datepicker-nav-btn" @click="prevYear('left')">
+                                                <span class="vort-picker-super-prev-icon"></span>
+                                            </button>
+                                            <button type="button" class="vort-datepicker-nav-btn" @click="prevMonth('left')">
+                                                <span class="vort-picker-prev-icon"></span>
+                                            </button>
+
+                                            <div class="vort-datepicker-header-view">
+                                                <button type="button" class="vort-datepicker-header-btn" @click="leftPanelMode = 'year'">
+                                                    {{ leftPanelYear }}{{ dpLocale.year_suffix }}
+                                                </button>
+                                                <button type="button" class="vort-datepicker-header-btn" @click="leftPanelMode = 'month'">
+                                                    {{ months[leftPanelMonth] }}
+                                                </button>
+                                            </div>
+
+                                            <button type="button" class="vort-datepicker-nav-btn" @click="nextMonth('left')">
+                                                <span class="vort-picker-next-icon"></span>
+                                            </button>
+                                            <button type="button" class="vort-datepicker-nav-btn" @click="nextYear('left')">
+                                                <span class="vort-picker-super-next-icon"></span>
+                                            </button>
+                                        </div>
+
+                                        <!-- 日历 -->
+                                        <div class="vort-datepicker-content">
+                                            <!-- 星期头 -->
+                                            <div class="vort-datepicker-week-header">
+                                                <span v-for="day in weekDays" :key="day" class="vort-datepicker-week-cell">{{ day }}</span>
+                                            </div>
+
+                                            <!-- 日期网格 -->
+                                            <div class="vort-datepicker-days">
+                                                <button
+                                                    v-for="(day, index) in leftCalendarDays"
+                                                    :key="index"
+                                                    type="button"
+                                                    :class="[
+                                                        'vort-datepicker-day-cell',
+                                                        !day.isCurrentMonth && 'vort-datepicker-day-other',
+                                                        day.isToday && 'vort-datepicker-day-today',
+                                                        (day.isStartSelected || day.isEndSelected) && 'vort-datepicker-day-selected',
+                                                        day.isInRange && 'vort-datepicker-day-in-range',
+                                                        day.isRangeStart && 'vort-datepicker-day-range-start',
+                                                        day.isRangeEnd && 'vort-datepicker-day-range-end',
+                                                        day.isDisabled && 'vort-datepicker-day-disabled'
+                                                    ]"
+                                                    :disabled="day.isDisabled"
+                                                    @click="selectDate(day.date)"
+                                                    @mouseenter="handleDayHover(day.date)"
+                                                    @mouseleave="handleDayLeave"
+                                                >
+                                                    {{ day.date.getDate() }}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </template>
+
+                                    <!-- 月份选择面板 -->
+                                    <template v-else-if="leftPanelMode === 'month'">
+                                        <div class="vort-datepicker-header">
+                                            <button type="button" class="vort-datepicker-nav-btn" @click="prevYear('left')">
+                                                <span class="vort-picker-super-prev-icon"></span>
+                                            </button>
+
+                                            <div class="vort-datepicker-header-view">
+                                                <button type="button" class="vort-datepicker-header-btn" @click="leftPanelMode = 'year'">
+                                                    {{ leftPanelYear }}{{ dpLocale.year_suffix }}
+                                                </button>
+                                            </div>
+
+                                            <button type="button" class="vort-datepicker-nav-btn" @click="nextYear('left')">
+                                                <span class="vort-picker-super-next-icon"></span>
+                                            </button>
+                                        </div>
+
+                                        <div class="vort-datepicker-content">
+                                            <div class="vort-datepicker-months">
+                                                <button
+                                                    v-for="(month, index) in months"
+                                                    :key="index"
+                                                    type="button"
+                                                    :class="[
+                                                        'vort-datepicker-month-cell',
+                                                        startDate &&
+                                                            startDate.getFullYear() === leftPanelYear &&
+                                                            startDate.getMonth() === index &&
+                                                            'vort-datepicker-month-selected',
+                                                        endDate &&
+                                                            endDate.getFullYear() === leftPanelYear &&
+                                                            endDate.getMonth() === index &&
+                                                            'vort-datepicker-month-selected'
+                                                    ]"
+                                                    @click="selectMonth(index, 'left')"
+                                                >
+                                                    {{ month }}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </template>
+
+                                    <!-- 年份选择面板 -->
+                                    <template v-else-if="leftPanelMode === 'year'">
+                                        <div class="vort-datepicker-header">
+                                            <button type="button" class="vort-datepicker-nav-btn" @click="prevDecade('left')">
+                                                <span class="vort-picker-super-prev-icon"></span>
+                                            </button>
+
+                                            <div class="vort-datepicker-header-view">
+                                                <span class="vort-datepicker-header-text"> {{ leftYearRange[1] }} - {{ leftYearRange[10] }} </span>
+                                            </div>
+
+                                            <button type="button" class="vort-datepicker-nav-btn" @click="nextDecade('left')">
+                                                <span class="vort-picker-super-next-icon"></span>
+                                            </button>
+                                        </div>
+
+                                        <div class="vort-datepicker-content">
+                                            <div class="vort-datepicker-years">
+                                                <button
+                                                    v-for="year in leftYearRange"
+                                                    :key="year"
+                                                    type="button"
+                                                    :class="[
+                                                        'vort-datepicker-year-cell',
+                                                        (year === leftYearRange[0] || year === leftYearRange[11]) && 'vort-datepicker-year-other',
+                                                        startDate && startDate.getFullYear() === year && 'vort-datepicker-year-selected',
+                                                        endDate && endDate.getFullYear() === year && 'vort-datepicker-year-selected'
+                                                    ]"
+                                                    @click="selectYear(year, 'left')"
+                                                >
+                                                    {{ year }}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+
+                                <!-- 时间选择区域（showTime 模式下显示） - 开始时间 -->
+                                <div v-if="showTime && leftPanelMode === 'date'" class="vort-datepicker-time-panel">
+                                    <!-- 时间头部 -->
+                                    <div class="vort-datepicker-time-header">
+                                        <span
+                                            >{{ String(startHour).padStart(2, "0") }}:{{ String(startMinute).padStart(2, "0")
+                                            }}{{ showTimeOptions?.showSecond !== false ? ":" + String(startSecond).padStart(2, "0") : "" }}</span
+                                        >
+                                    </div>
+
+                                    <!-- 时间选择列 -->
+                                    <div class="vort-datepicker-time-content">
+                                        <!-- 小时列 -->
+                                        <div ref="startHourColumnRef" class="vort-datepicker-time-column">
+                                            <ul class="vort-datepicker-time-column-inner">
+                                                <li
+                                                    v-for="hour in hours"
+                                                    :key="hour"
+                                                    :class="[
+                                                        'vort-datepicker-time-cell',
+                                                        startHour === hour && 'vort-datepicker-time-cell-selected',
+                                                        isHourDisabled(hour) && 'vort-datepicker-time-cell-disabled'
+                                                    ]"
+                                                    @click="!isHourDisabled(hour) && selectStartHour(hour)"
+                                                >
+                                                    {{ String(hour).padStart(2, "0") }}
+                                                </li>
+                                            </ul>
+                                        </div>
+
+                                        <!-- 分钟列 -->
+                                        <div ref="startMinuteColumnRef" class="vort-datepicker-time-column">
+                                            <ul class="vort-datepicker-time-column-inner">
+                                                <li
+                                                    v-for="minute in startMinutes"
+                                                    :key="minute"
+                                                    :class="[
+                                                        'vort-datepicker-time-cell',
+                                                        startMinute === minute && 'vort-datepicker-time-cell-selected',
+                                                        isMinuteDisabled(minute, startHour) && 'vort-datepicker-time-cell-disabled'
+                                                    ]"
+                                                    @click="!isMinuteDisabled(minute, startHour) && selectStartMinute(minute)"
+                                                >
+                                                    {{ String(minute).padStart(2, "0") }}
+                                                </li>
+                                            </ul>
+                                        </div>
+
+                                        <!-- 秒列 -->
+                                        <div v-if="showTimeOptions?.showSecond !== false" ref="startSecondColumnRef" class="vort-datepicker-time-column">
+                                            <ul class="vort-datepicker-time-column-inner">
+                                                <li
+                                                    v-for="second in startSeconds"
+                                                    :key="second"
+                                                    :class="[
+                                                        'vort-datepicker-time-cell',
+                                                        startSecond === second && 'vort-datepicker-time-cell-selected',
+                                                        isSecondDisabled(second, startHour, startMinute) && 'vort-datepicker-time-cell-disabled'
+                                                    ]"
+                                                    @click="!isSecondDisabled(second, startHour, startMinute) && selectStartSecond(second)"
+                                                >
+                                                    {{ String(second).padStart(2, "0") }}
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 右侧面板 -->
+                            <div class="vort-rangepicker-panel-right">
+                                <!-- 日期选择区域 -->
+                                <div class="vort-datepicker-date-panel">
+                                    <!-- 日期选择面板 -->
+                                    <template v-if="rightPanelMode === 'date'">
+                                        <!-- 头部 -->
+                                        <div class="vort-datepicker-header">
+                                            <button type="button" class="vort-datepicker-nav-btn" @click="prevYear('right')">
+                                                <span class="vort-picker-super-prev-icon"></span>
+                                            </button>
+                                            <button type="button" class="vort-datepicker-nav-btn" @click="prevMonth('right')">
+                                                <span class="vort-picker-prev-icon"></span>
+                                            </button>
+
+                                            <div class="vort-datepicker-header-view">
+                                                <button type="button" class="vort-datepicker-header-btn" @click="rightPanelMode = 'year'">
+                                                    {{ rightPanelYear }}{{ dpLocale.year_suffix }}
+                                                </button>
+                                                <button type="button" class="vort-datepicker-header-btn" @click="rightPanelMode = 'month'">
+                                                    {{ months[rightPanelMonth] }}
+                                                </button>
+                                            </div>
+
+                                            <button type="button" class="vort-datepicker-nav-btn" @click="nextMonth('right')">
+                                                <span class="vort-picker-next-icon"></span>
+                                            </button>
+                                            <button type="button" class="vort-datepicker-nav-btn" @click="nextYear('right')">
+                                                <span class="vort-picker-super-next-icon"></span>
+                                            </button>
+                                        </div>
+
+                                        <!-- 日历 -->
+                                        <div class="vort-datepicker-content">
+                                            <!-- 星期头 -->
+                                            <div class="vort-datepicker-week-header">
+                                                <span v-for="day in weekDays" :key="day" class="vort-datepicker-week-cell">{{ day }}</span>
+                                            </div>
+
+                                            <!-- 日期网格 -->
+                                            <div class="vort-datepicker-days">
+                                                <button
+                                                    v-for="(day, index) in rightCalendarDays"
+                                                    :key="index"
+                                                    type="button"
+                                                    :class="[
+                                                        'vort-datepicker-day-cell',
+                                                        !day.isCurrentMonth && 'vort-datepicker-day-other',
+                                                        day.isToday && 'vort-datepicker-day-today',
+                                                        (day.isStartSelected || day.isEndSelected) && 'vort-datepicker-day-selected',
+                                                        day.isInRange && 'vort-datepicker-day-in-range',
+                                                        day.isRangeStart && 'vort-datepicker-day-range-start',
+                                                        day.isRangeEnd && 'vort-datepicker-day-range-end',
+                                                        day.isDisabled && 'vort-datepicker-day-disabled'
+                                                    ]"
+                                                    :disabled="day.isDisabled"
+                                                    @click="selectDate(day.date)"
+                                                    @mouseenter="handleDayHover(day.date)"
+                                                    @mouseleave="handleDayLeave"
+                                                >
+                                                    {{ day.date.getDate() }}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </template>
+
+                                    <!-- 月份选择面板 -->
+                                    <template v-else-if="rightPanelMode === 'month'">
+                                        <div class="vort-datepicker-header">
+                                            <button type="button" class="vort-datepicker-nav-btn" @click="prevYear('right')">
+                                                <span class="vort-picker-super-prev-icon"></span>
+                                            </button>
+
+                                            <div class="vort-datepicker-header-view">
+                                                <button type="button" class="vort-datepicker-header-btn" @click="rightPanelMode = 'year'">
+                                                    {{ rightPanelYear }}{{ dpLocale.year_suffix }}
+                                                </button>
+                                            </div>
+
+                                            <button type="button" class="vort-datepicker-nav-btn" @click="nextYear('right')">
+                                                <span class="vort-picker-super-next-icon"></span>
+                                            </button>
+                                        </div>
+
+                                        <div class="vort-datepicker-content">
+                                            <div class="vort-datepicker-months">
+                                                <button
+                                                    v-for="(month, index) in months"
+                                                    :key="index"
+                                                    type="button"
+                                                    :class="[
+                                                        'vort-datepicker-month-cell',
+                                                        startDate &&
+                                                            startDate.getFullYear() === rightPanelYear &&
+                                                            startDate.getMonth() === index &&
+                                                            'vort-datepicker-month-selected',
+                                                        endDate &&
+                                                            endDate.getFullYear() === rightPanelYear &&
+                                                            endDate.getMonth() === index &&
+                                                            'vort-datepicker-month-selected'
+                                                    ]"
+                                                    @click="selectMonth(index, 'right')"
+                                                >
+                                                    {{ month }}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </template>
+
+                                    <!-- 年份选择面板 -->
+                                    <template v-else-if="rightPanelMode === 'year'">
+                                        <div class="vort-datepicker-header">
+                                            <button type="button" class="vort-datepicker-nav-btn" @click="prevDecade('right')">
+                                                <span class="vort-picker-super-prev-icon"></span>
+                                            </button>
+
+                                            <div class="vort-datepicker-header-view">
+                                                <span class="vort-datepicker-header-text"> {{ rightYearRange[1] }} - {{ rightYearRange[10] }} </span>
+                                            </div>
+
+                                            <button type="button" class="vort-datepicker-nav-btn" @click="nextDecade('right')">
+                                                <span class="vort-picker-super-next-icon"></span>
+                                            </button>
+                                        </div>
+
+                                        <div class="vort-datepicker-content">
+                                            <div class="vort-datepicker-years">
+                                                <button
+                                                    v-for="year in rightYearRange"
+                                                    :key="year"
+                                                    type="button"
+                                                    :class="[
+                                                        'vort-datepicker-year-cell',
+                                                        (year === rightYearRange[0] || year === rightYearRange[11]) && 'vort-datepicker-year-other',
+                                                        startDate && startDate.getFullYear() === year && 'vort-datepicker-year-selected',
+                                                        endDate && endDate.getFullYear() === year && 'vort-datepicker-year-selected'
+                                                    ]"
+                                                    @click="selectYear(year, 'right')"
+                                                >
+                                                    {{ year }}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+
+                                <!-- 时间选择区域（showTime 模式下显示） - 结束时间 -->
+                                <div v-if="showTime && rightPanelMode === 'date'" class="vort-datepicker-time-panel">
+                                    <!-- 时间头部 -->
+                                    <div class="vort-datepicker-time-header">
+                                        <span
+                                            >{{ String(endHour).padStart(2, "0") }}:{{ String(endMinute).padStart(2, "0")
+                                            }}{{ showTimeOptions?.showSecond !== false ? ":" + String(endSecond).padStart(2, "0") : "" }}</span
+                                        >
+                                    </div>
+
+                                    <!-- 时间选择列 -->
+                                    <div class="vort-datepicker-time-content">
+                                        <!-- 小时列 -->
+                                        <div ref="endHourColumnRef" class="vort-datepicker-time-column">
+                                            <ul class="vort-datepicker-time-column-inner">
+                                                <li
+                                                    v-for="hour in hours"
+                                                    :key="hour"
+                                                    :class="[
+                                                        'vort-datepicker-time-cell',
+                                                        endHour === hour && 'vort-datepicker-time-cell-selected',
+                                                        isHourDisabled(hour) && 'vort-datepicker-time-cell-disabled'
+                                                    ]"
+                                                    @click="!isHourDisabled(hour) && selectEndHour(hour)"
+                                                >
+                                                    {{ String(hour).padStart(2, "0") }}
+                                                </li>
+                                            </ul>
+                                        </div>
+
+                                        <!-- 分钟列 -->
+                                        <div ref="endMinuteColumnRef" class="vort-datepicker-time-column">
+                                            <ul class="vort-datepicker-time-column-inner">
+                                                <li
+                                                    v-for="minute in endMinutes"
+                                                    :key="minute"
+                                                    :class="[
+                                                        'vort-datepicker-time-cell',
+                                                        endMinute === minute && 'vort-datepicker-time-cell-selected',
+                                                        isMinuteDisabled(minute, endHour) && 'vort-datepicker-time-cell-disabled'
+                                                    ]"
+                                                    @click="!isMinuteDisabled(minute, endHour) && selectEndMinute(minute)"
+                                                >
+                                                    {{ String(minute).padStart(2, "0") }}
+                                                </li>
+                                            </ul>
+                                        </div>
+
+                                        <!-- 秒列 -->
+                                        <div v-if="showTimeOptions?.showSecond !== false" ref="endSecondColumnRef" class="vort-datepicker-time-column">
+                                            <ul class="vort-datepicker-time-column-inner">
+                                                <li
+                                                    v-for="second in endSeconds"
+                                                    :key="second"
+                                                    :class="[
+                                                        'vort-datepicker-time-cell',
+                                                        endSecond === second && 'vort-datepicker-time-cell-selected',
+                                                        isSecondDisabled(second, endHour, endMinute) && 'vort-datepicker-time-cell-disabled'
+                                                    ]"
+                                                    @click="!isSecondDisabled(second, endHour, endMinute) && selectEndSecond(second)"
+                                                >
+                                                    {{ String(second).padStart(2, "0") }}
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 底部按钮 -->
+                    <div v-if="showTime" class="vort-datepicker-footer vort-datepicker-footer-showtime">
+                        <VortButton v-if="showNow" variant="text" size="small" @click="selectNow">{{ dpT("now") }}</VortButton>
+                        <VortButton variant="primary" size="small" @click="confirmSelection">{{ dpT("ok") }}</VortButton>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
     </div>
-
-    <!-- 日期面板 -->
-    <Teleport v-if="shouldRenderTeleport" :to="popupContainer">
-        <Transition name="vort-datepicker" appear @after-leave="handleAfterLeave">
-            <div
-                v-if="isOpen"
-                ref="panelRef"
-                class="vort-rangepicker-panel"
-                :class="{ 'vort-rangepicker-panel-showtime': showTime }"
-                :style="{ ...panelStyle, '--transform-origin': transformOrigin }"
-            >
-                <div class="vort-rangepicker-panel-body">
-                    <!-- 预设区域（与 Ant Design 一致，左侧垂直排列） -->
-                    <div v-if="hasPresets" class="vort-rangepicker-presets">
-                        <button
-                            v-for="preset in presets"
-                            :key="preset.label"
-                            type="button"
-                            class="vort-rangepicker-presets-item"
-                            :class="isPresetActive(preset) && 'vort-rangepicker-presets-item-active'"
-                            @click="applyPresetRange(preset)"
-                            @mousedown.prevent
-                        >
-                            {{ preset.label }}
-                        </button>
-                    </div>
-                    <div class="vort-rangepicker-panels">
-                        <!-- 左侧面板 -->
-                        <div class="vort-rangepicker-panel-left">
-                            <!-- 日期选择区域 -->
-                            <div class="vort-datepicker-date-panel">
-                                <!-- 日期选择面板 -->
-                                <template v-if="leftPanelMode === 'date'">
-                                    <!-- 头部 -->
-                                    <div class="vort-datepicker-header">
-                                        <button type="button" class="vort-datepicker-nav-btn" @click="prevYear('left')">
-                                            <span class="vort-picker-super-prev-icon"></span>
-                                        </button>
-                                        <button type="button" class="vort-datepicker-nav-btn" @click="prevMonth('left')">
-                                            <span class="vort-picker-prev-icon"></span>
-                                        </button>
-
-                                        <div class="vort-datepicker-header-view">
-                                            <button type="button" class="vort-datepicker-header-btn" @click="leftPanelMode = 'year'">
-                                                {{ leftPanelYear }}{{ dpLocale.year_suffix }}
-                                            </button>
-                                            <button type="button" class="vort-datepicker-header-btn" @click="leftPanelMode = 'month'">
-                                                {{ months[leftPanelMonth] }}
-                                            </button>
-                                        </div>
-
-                                        <button type="button" class="vort-datepicker-nav-btn" @click="nextMonth('left')">
-                                            <span class="vort-picker-next-icon"></span>
-                                        </button>
-                                        <button type="button" class="vort-datepicker-nav-btn" @click="nextYear('left')">
-                                            <span class="vort-picker-super-next-icon"></span>
-                                        </button>
-                                    </div>
-
-                                    <!-- 日历 -->
-                                    <div class="vort-datepicker-content">
-                                        <!-- 星期头 -->
-                                        <div class="vort-datepicker-week-header">
-                                            <span v-for="day in weekDays" :key="day" class="vort-datepicker-week-cell">{{ day }}</span>
-                                        </div>
-
-                                        <!-- 日期网格 -->
-                                        <div class="vort-datepicker-days">
-                                            <button
-                                                v-for="(day, index) in leftCalendarDays"
-                                                :key="index"
-                                                type="button"
-                                                :class="[
-                                                    'vort-datepicker-day-cell',
-                                                    !day.isCurrentMonth && 'vort-datepicker-day-other',
-                                                    day.isToday && 'vort-datepicker-day-today',
-                                                    (day.isStartSelected || day.isEndSelected) && 'vort-datepicker-day-selected',
-                                                    day.isInRange && 'vort-datepicker-day-in-range',
-                                                    day.isRangeStart && 'vort-datepicker-day-range-start',
-                                                    day.isRangeEnd && 'vort-datepicker-day-range-end',
-                                                    day.isDisabled && 'vort-datepicker-day-disabled'
-                                                ]"
-                                                :disabled="day.isDisabled"
-                                                @click="selectDate(day.date)"
-                                                @mouseenter="handleDayHover(day.date)"
-                                                @mouseleave="handleDayLeave"
-                                            >
-                                                {{ day.date.getDate() }}
-                                            </button>
-                                        </div>
-                                    </div>
-                                </template>
-
-                                <!-- 月份选择面板 -->
-                                <template v-else-if="leftPanelMode === 'month'">
-                                    <div class="vort-datepicker-header">
-                                        <button type="button" class="vort-datepicker-nav-btn" @click="prevYear('left')">
-                                            <span class="vort-picker-super-prev-icon"></span>
-                                        </button>
-
-                                        <div class="vort-datepicker-header-view">
-                                            <button type="button" class="vort-datepicker-header-btn" @click="leftPanelMode = 'year'">
-                                                {{ leftPanelYear }}{{ dpLocale.year_suffix }}
-                                            </button>
-                                        </div>
-
-                                        <button type="button" class="vort-datepicker-nav-btn" @click="nextYear('left')">
-                                            <span class="vort-picker-super-next-icon"></span>
-                                        </button>
-                                    </div>
-
-                                    <div class="vort-datepicker-content">
-                                        <div class="vort-datepicker-months">
-                                            <button
-                                                v-for="(month, index) in months"
-                                                :key="index"
-                                                type="button"
-                                                :class="[
-                                                    'vort-datepicker-month-cell',
-                                                    startDate &&
-                                                        startDate.getFullYear() === leftPanelYear &&
-                                                        startDate.getMonth() === index &&
-                                                        'vort-datepicker-month-selected',
-                                                    endDate &&
-                                                        endDate.getFullYear() === leftPanelYear &&
-                                                        endDate.getMonth() === index &&
-                                                        'vort-datepicker-month-selected'
-                                                ]"
-                                                @click="selectMonth(index, 'left')"
-                                            >
-                                                {{ month }}
-                                            </button>
-                                        </div>
-                                    </div>
-                                </template>
-
-                                <!-- 年份选择面板 -->
-                                <template v-else-if="leftPanelMode === 'year'">
-                                    <div class="vort-datepicker-header">
-                                        <button type="button" class="vort-datepicker-nav-btn" @click="prevDecade('left')">
-                                            <span class="vort-picker-super-prev-icon"></span>
-                                        </button>
-
-                                        <div class="vort-datepicker-header-view">
-                                            <span class="vort-datepicker-header-text"> {{ leftYearRange[1] }} - {{ leftYearRange[10] }} </span>
-                                        </div>
-
-                                        <button type="button" class="vort-datepicker-nav-btn" @click="nextDecade('left')">
-                                            <span class="vort-picker-super-next-icon"></span>
-                                        </button>
-                                    </div>
-
-                                    <div class="vort-datepicker-content">
-                                        <div class="vort-datepicker-years">
-                                            <button
-                                                v-for="year in leftYearRange"
-                                                :key="year"
-                                                type="button"
-                                                :class="[
-                                                    'vort-datepicker-year-cell',
-                                                    (year === leftYearRange[0] || year === leftYearRange[11]) && 'vort-datepicker-year-other',
-                                                    startDate && startDate.getFullYear() === year && 'vort-datepicker-year-selected',
-                                                    endDate && endDate.getFullYear() === year && 'vort-datepicker-year-selected'
-                                                ]"
-                                                @click="selectYear(year, 'left')"
-                                            >
-                                                {{ year }}
-                                            </button>
-                                        </div>
-                                    </div>
-                                </template>
-                            </div>
-
-                            <!-- 时间选择区域（showTime 模式下显示） - 开始时间 -->
-                            <div v-if="showTime && leftPanelMode === 'date'" class="vort-datepicker-time-panel">
-                                <!-- 时间头部 -->
-                                <div class="vort-datepicker-time-header">
-                                    <span
-                                        >{{ String(startHour).padStart(2, "0") }}:{{ String(startMinute).padStart(2, "0")
-                                        }}{{ showTimeOptions?.showSecond !== false ? ":" + String(startSecond).padStart(2, "0") : "" }}</span
-                                    >
-                                </div>
-
-                                <!-- 时间选择列 -->
-                                <div class="vort-datepicker-time-content">
-                                    <!-- 小时列 -->
-                                    <div ref="startHourColumnRef" class="vort-datepicker-time-column">
-                                        <ul class="vort-datepicker-time-column-inner">
-                                            <li
-                                                v-for="hour in hours"
-                                                :key="hour"
-                                                :class="[
-                                                    'vort-datepicker-time-cell',
-                                                    startHour === hour && 'vort-datepicker-time-cell-selected',
-                                                    isHourDisabled(hour) && 'vort-datepicker-time-cell-disabled'
-                                                ]"
-                                                @click="!isHourDisabled(hour) && selectStartHour(hour)"
-                                            >
-                                                {{ String(hour).padStart(2, "0") }}
-                                            </li>
-                                        </ul>
-                                    </div>
-
-                                    <!-- 分钟列 -->
-                                    <div ref="startMinuteColumnRef" class="vort-datepicker-time-column">
-                                        <ul class="vort-datepicker-time-column-inner">
-                                            <li
-                                                v-for="minute in startMinutes"
-                                                :key="minute"
-                                                :class="[
-                                                    'vort-datepicker-time-cell',
-                                                    startMinute === minute && 'vort-datepicker-time-cell-selected',
-                                                    isMinuteDisabled(minute, startHour) && 'vort-datepicker-time-cell-disabled'
-                                                ]"
-                                                @click="!isMinuteDisabled(minute, startHour) && selectStartMinute(minute)"
-                                            >
-                                                {{ String(minute).padStart(2, "0") }}
-                                            </li>
-                                        </ul>
-                                    </div>
-
-                                    <!-- 秒列 -->
-                                    <div v-if="showTimeOptions?.showSecond !== false" ref="startSecondColumnRef" class="vort-datepicker-time-column">
-                                        <ul class="vort-datepicker-time-column-inner">
-                                            <li
-                                                v-for="second in startSeconds"
-                                                :key="second"
-                                                :class="[
-                                                    'vort-datepicker-time-cell',
-                                                    startSecond === second && 'vort-datepicker-time-cell-selected',
-                                                    isSecondDisabled(second, startHour, startMinute) && 'vort-datepicker-time-cell-disabled'
-                                                ]"
-                                                @click="!isSecondDisabled(second, startHour, startMinute) && selectStartSecond(second)"
-                                            >
-                                                {{ String(second).padStart(2, "0") }}
-                                            </li>
-                                        </ul>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- 右侧面板 -->
-                        <div class="vort-rangepicker-panel-right">
-                            <!-- 日期选择区域 -->
-                            <div class="vort-datepicker-date-panel">
-                                <!-- 日期选择面板 -->
-                                <template v-if="rightPanelMode === 'date'">
-                                    <!-- 头部 -->
-                                    <div class="vort-datepicker-header">
-                                        <button type="button" class="vort-datepicker-nav-btn" @click="prevYear('right')">
-                                            <span class="vort-picker-super-prev-icon"></span>
-                                        </button>
-                                        <button type="button" class="vort-datepicker-nav-btn" @click="prevMonth('right')">
-                                            <span class="vort-picker-prev-icon"></span>
-                                        </button>
-
-                                        <div class="vort-datepicker-header-view">
-                                            <button type="button" class="vort-datepicker-header-btn" @click="rightPanelMode = 'year'">
-                                                {{ rightPanelYear }}{{ dpLocale.year_suffix }}
-                                            </button>
-                                            <button type="button" class="vort-datepicker-header-btn" @click="rightPanelMode = 'month'">
-                                                {{ months[rightPanelMonth] }}
-                                            </button>
-                                        </div>
-
-                                        <button type="button" class="vort-datepicker-nav-btn" @click="nextMonth('right')">
-                                            <span class="vort-picker-next-icon"></span>
-                                        </button>
-                                        <button type="button" class="vort-datepicker-nav-btn" @click="nextYear('right')">
-                                            <span class="vort-picker-super-next-icon"></span>
-                                        </button>
-                                    </div>
-
-                                    <!-- 日历 -->
-                                    <div class="vort-datepicker-content">
-                                        <!-- 星期头 -->
-                                        <div class="vort-datepicker-week-header">
-                                            <span v-for="day in weekDays" :key="day" class="vort-datepicker-week-cell">{{ day }}</span>
-                                        </div>
-
-                                        <!-- 日期网格 -->
-                                        <div class="vort-datepicker-days">
-                                            <button
-                                                v-for="(day, index) in rightCalendarDays"
-                                                :key="index"
-                                                type="button"
-                                                :class="[
-                                                    'vort-datepicker-day-cell',
-                                                    !day.isCurrentMonth && 'vort-datepicker-day-other',
-                                                    day.isToday && 'vort-datepicker-day-today',
-                                                    (day.isStartSelected || day.isEndSelected) && 'vort-datepicker-day-selected',
-                                                    day.isInRange && 'vort-datepicker-day-in-range',
-                                                    day.isRangeStart && 'vort-datepicker-day-range-start',
-                                                    day.isRangeEnd && 'vort-datepicker-day-range-end',
-                                                    day.isDisabled && 'vort-datepicker-day-disabled'
-                                                ]"
-                                                :disabled="day.isDisabled"
-                                                @click="selectDate(day.date)"
-                                                @mouseenter="handleDayHover(day.date)"
-                                                @mouseleave="handleDayLeave"
-                                            >
-                                                {{ day.date.getDate() }}
-                                            </button>
-                                        </div>
-                                    </div>
-                                </template>
-
-                                <!-- 月份选择面板 -->
-                                <template v-else-if="rightPanelMode === 'month'">
-                                    <div class="vort-datepicker-header">
-                                        <button type="button" class="vort-datepicker-nav-btn" @click="prevYear('right')">
-                                            <span class="vort-picker-super-prev-icon"></span>
-                                        </button>
-
-                                        <div class="vort-datepicker-header-view">
-                                            <button type="button" class="vort-datepicker-header-btn" @click="rightPanelMode = 'year'">
-                                                {{ rightPanelYear }}{{ dpLocale.year_suffix }}
-                                            </button>
-                                        </div>
-
-                                        <button type="button" class="vort-datepicker-nav-btn" @click="nextYear('right')">
-                                            <span class="vort-picker-super-next-icon"></span>
-                                        </button>
-                                    </div>
-
-                                    <div class="vort-datepicker-content">
-                                        <div class="vort-datepicker-months">
-                                            <button
-                                                v-for="(month, index) in months"
-                                                :key="index"
-                                                type="button"
-                                                :class="[
-                                                    'vort-datepicker-month-cell',
-                                                    startDate &&
-                                                        startDate.getFullYear() === rightPanelYear &&
-                                                        startDate.getMonth() === index &&
-                                                        'vort-datepicker-month-selected',
-                                                    endDate &&
-                                                        endDate.getFullYear() === rightPanelYear &&
-                                                        endDate.getMonth() === index &&
-                                                        'vort-datepicker-month-selected'
-                                                ]"
-                                                @click="selectMonth(index, 'right')"
-                                            >
-                                                {{ month }}
-                                            </button>
-                                        </div>
-                                    </div>
-                                </template>
-
-                                <!-- 年份选择面板 -->
-                                <template v-else-if="rightPanelMode === 'year'">
-                                    <div class="vort-datepicker-header">
-                                        <button type="button" class="vort-datepicker-nav-btn" @click="prevDecade('right')">
-                                            <span class="vort-picker-super-prev-icon"></span>
-                                        </button>
-
-                                        <div class="vort-datepicker-header-view">
-                                            <span class="vort-datepicker-header-text"> {{ rightYearRange[1] }} - {{ rightYearRange[10] }} </span>
-                                        </div>
-
-                                        <button type="button" class="vort-datepicker-nav-btn" @click="nextDecade('right')">
-                                            <span class="vort-picker-super-next-icon"></span>
-                                        </button>
-                                    </div>
-
-                                    <div class="vort-datepicker-content">
-                                        <div class="vort-datepicker-years">
-                                            <button
-                                                v-for="year in rightYearRange"
-                                                :key="year"
-                                                type="button"
-                                                :class="[
-                                                    'vort-datepicker-year-cell',
-                                                    (year === rightYearRange[0] || year === rightYearRange[11]) && 'vort-datepicker-year-other',
-                                                    startDate && startDate.getFullYear() === year && 'vort-datepicker-year-selected',
-                                                    endDate && endDate.getFullYear() === year && 'vort-datepicker-year-selected'
-                                                ]"
-                                                @click="selectYear(year, 'right')"
-                                            >
-                                                {{ year }}
-                                            </button>
-                                        </div>
-                                    </div>
-                                </template>
-                            </div>
-
-                            <!-- 时间选择区域（showTime 模式下显示） - 结束时间 -->
-                            <div v-if="showTime && rightPanelMode === 'date'" class="vort-datepicker-time-panel">
-                                <!-- 时间头部 -->
-                                <div class="vort-datepicker-time-header">
-                                    <span
-                                        >{{ String(endHour).padStart(2, "0") }}:{{ String(endMinute).padStart(2, "0")
-                                        }}{{ showTimeOptions?.showSecond !== false ? ":" + String(endSecond).padStart(2, "0") : "" }}</span
-                                    >
-                                </div>
-
-                                <!-- 时间选择列 -->
-                                <div class="vort-datepicker-time-content">
-                                    <!-- 小时列 -->
-                                    <div ref="endHourColumnRef" class="vort-datepicker-time-column">
-                                        <ul class="vort-datepicker-time-column-inner">
-                                            <li
-                                                v-for="hour in hours"
-                                                :key="hour"
-                                                :class="[
-                                                    'vort-datepicker-time-cell',
-                                                    endHour === hour && 'vort-datepicker-time-cell-selected',
-                                                    isHourDisabled(hour) && 'vort-datepicker-time-cell-disabled'
-                                                ]"
-                                                @click="!isHourDisabled(hour) && selectEndHour(hour)"
-                                            >
-                                                {{ String(hour).padStart(2, "0") }}
-                                            </li>
-                                        </ul>
-                                    </div>
-
-                                    <!-- 分钟列 -->
-                                    <div ref="endMinuteColumnRef" class="vort-datepicker-time-column">
-                                        <ul class="vort-datepicker-time-column-inner">
-                                            <li
-                                                v-for="minute in endMinutes"
-                                                :key="minute"
-                                                :class="[
-                                                    'vort-datepicker-time-cell',
-                                                    endMinute === minute && 'vort-datepicker-time-cell-selected',
-                                                    isMinuteDisabled(minute, endHour) && 'vort-datepicker-time-cell-disabled'
-                                                ]"
-                                                @click="!isMinuteDisabled(minute, endHour) && selectEndMinute(minute)"
-                                            >
-                                                {{ String(minute).padStart(2, "0") }}
-                                            </li>
-                                        </ul>
-                                    </div>
-
-                                    <!-- 秒列 -->
-                                    <div v-if="showTimeOptions?.showSecond !== false" ref="endSecondColumnRef" class="vort-datepicker-time-column">
-                                        <ul class="vort-datepicker-time-column-inner">
-                                            <li
-                                                v-for="second in endSeconds"
-                                                :key="second"
-                                                :class="[
-                                                    'vort-datepicker-time-cell',
-                                                    endSecond === second && 'vort-datepicker-time-cell-selected',
-                                                    isSecondDisabled(second, endHour, endMinute) && 'vort-datepicker-time-cell-disabled'
-                                                ]"
-                                                @click="!isSecondDisabled(second, endHour, endMinute) && selectEndSecond(second)"
-                                            >
-                                                {{ String(second).padStart(2, "0") }}
-                                            </li>
-                                        </ul>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 底部按钮 -->
-                <div v-if="showTime" class="vort-datepicker-footer vort-datepicker-footer-showtime">
-                    <VortButton v-if="showNow" variant="text" size="small" @click="selectNow">{{ dpT("now") }}</VortButton>
-                    <VortButton variant="primary" size="small" @click="confirmSelection">{{ dpT("ok") }}</VortButton>
-                </div>
-            </div>
-        </Transition>
-    </Teleport>
 </template>
 
 <style scoped>
@@ -1821,6 +1861,113 @@ defineExpose({
     --_bg-color: rgba(0, 0, 0, 0.04);
     color: var(--vort-text-quaternary, rgba(0, 0, 0, 0.25));
     cursor: not-allowed;
+}
+
+/* 起止日期自己声明了正常文本色，聚焦态还会变成主色，禁用时都要压回禁用色 */
+.vort-rangepicker-disabled .vort-rangepicker-input-value,
+.vort-rangepicker-disabled .vort-rangepicker-input-active {
+    color: var(--vort-text-quaternary, rgba(0, 0, 0, 0.25));
+}
+
+/* ========================================
+   形态变体 - Outlined（默认）
+   ======================================== */
+.vort-rangepicker-outlined {
+    border: 1px solid var(--_border-color);
+    background: var(--_bg-color);
+}
+
+/* ========================================
+   形态变体 - Filled
+   ======================================== */
+.vort-rangepicker-filled {
+    --_bg-color: rgba(0, 0, 0, 0.04);
+    border: 1px solid transparent;
+}
+
+.vort-rangepicker-filled:hover:not(.vort-rangepicker-disabled) {
+    --_bg-color: rgba(0, 0, 0, 0.06);
+    border-color: transparent;
+}
+
+.vort-rangepicker-filled.vort-rangepicker-focused:not(.vort-rangepicker-disabled) {
+    --_bg-color: #fff;
+    border-color: var(--_focus-color);
+    box-shadow: none;
+}
+
+/* Filled + Error/Warning：状态色浅底，不显示边框，聚焦时白底 + 状态色边框（对齐 antd） */
+.vort-rangepicker-filled.vort-rangepicker-error:not(.vort-rangepicker-disabled) {
+    --_bg-color: var(--vort-error-bg, #fff2f0);
+}
+
+.vort-rangepicker-filled.vort-rangepicker-warning:not(.vort-rangepicker-disabled) {
+    --_bg-color: var(--vort-warning-bg, #fffbe6);
+}
+
+.vort-rangepicker-filled.vort-rangepicker-error:hover:not(.vort-rangepicker-disabled) {
+    --_bg-color: var(--vort-error-bg-hover, #fff1f0);
+}
+
+.vort-rangepicker-filled.vort-rangepicker-warning:hover:not(.vort-rangepicker-disabled) {
+    --_bg-color: var(--vort-warning-bg-hover, #fff1b8);
+}
+
+.vort-rangepicker-filled.vort-rangepicker-error.vort-rangepicker-focused:not(.vort-rangepicker-disabled),
+.vort-rangepicker-filled.vort-rangepicker-warning.vort-rangepicker-focused:not(.vort-rangepicker-disabled) {
+    --_bg-color: #fff;
+}
+
+/* ========================================
+   形态变体 - Borderless
+   ======================================== */
+.vort-rangepicker-borderless {
+    border: 1px solid transparent;
+    background: transparent;
+}
+
+.vort-rangepicker-borderless:hover:not(.vort-rangepicker-disabled) {
+    border-color: transparent;
+}
+
+/* 聚焦时显示 1px 边框，颜色随状态；鼠标点击与键盘聚焦都显示 */
+.vort-rangepicker-borderless.vort-rangepicker-focused:not(.vort-rangepicker-disabled) {
+    background: transparent;
+    border-color: var(--_focus-color);
+    box-shadow: none;
+}
+
+/* Filled / Borderless 没有常显的状态边框，用状态色文字提示 */
+.vort-rangepicker-filled.vort-rangepicker-error:not(.vort-rangepicker-disabled) .vort-rangepicker-input-value:not(.vort-rangepicker-input-active),
+.vort-rangepicker-borderless.vort-rangepicker-error:not(.vort-rangepicker-disabled) .vort-rangepicker-input-value:not(.vort-rangepicker-input-active) {
+    color: var(--vort-error, #ff4d4f);
+}
+
+.vort-rangepicker-filled.vort-rangepicker-warning:not(.vort-rangepicker-disabled) .vort-rangepicker-input-value:not(.vort-rangepicker-input-active),
+.vort-rangepicker-borderless.vort-rangepicker-warning:not(.vort-rangepicker-disabled) .vort-rangepicker-input-value:not(.vort-rangepicker-input-active) {
+    color: var(--vort-warning, #faad14);
+}
+
+/* ========================================
+   形态变体 - Underlined
+   ======================================== */
+/* 四边保留 1px 透明边框、只给底边着色：切换形态时盒子尺寸不变，也不会从 border: none 的默认粗黑边过渡出来 */
+.vort-rangepicker-underlined {
+    border: 1px solid transparent;
+    border-bottom-color: var(--_border-color);
+    border-radius: 0;
+    background: transparent;
+}
+
+.vort-rangepicker-underlined:hover:not(.vort-rangepicker-disabled) {
+    border-color: transparent;
+    border-bottom-color: var(--_focus-color);
+}
+
+.vort-rangepicker-underlined.vort-rangepicker-focused:not(.vort-rangepicker-disabled) {
+    border-color: transparent;
+    border-bottom-color: var(--_focus-color);
+    box-shadow: none;
 }
 
 /* 尺寸 */

@@ -1,17 +1,19 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from "vue";
-import { Tooltip } from "@/components/vort/tooltip";
-import type { SliderProps, Mark } from "./types";
+import { ref, computed, watch, onBeforeUnmount, nextTick } from "vue";
+import { Tooltip } from "../tooltip";
+import { useFormDisabled } from "../form/useFormDisabled";
+import type { SliderComponentProps } from "./component-props";
+
+type TooltipRef = { updatePosition?: () => void };
 
 defineOptions({ name: "VortSlider" });
 
 /** Vort Slider - 滑动输入条组件 */
 
-const props = withDefaults(defineProps<SliderProps>(), {
+const props = withDefaults(defineProps<SliderComponentProps>(), {
     min: 0,
     max: 100,
     step: 1,
-    disabled: false,
     tooltip: true,
     range: false,
     vertical: false,
@@ -19,6 +21,8 @@ const props = withDefaults(defineProps<SliderProps>(), {
     included: true,
     dots: false
 });
+
+const mergedDisabled = useFormDisabled(() => props.disabled);
 
 const emit = defineEmits<{
     "update:modelValue": [value: number | [number, number]];
@@ -31,12 +35,21 @@ const railRef = ref<HTMLElement | null>(null);
 const isDragging = ref(false);
 const activeHandleIndex = ref<number | null>(null);
 
+// 拖拽会话
+let dragPointerId: number | null = null;
+/** 按下手柄时指针相对手柄中心的偏移（百分比），拖动全程保持，按住手柄边缘也不会跳值 */
+let dragOffsetPercent = 0;
+/** 范围模式两个手柄重叠时，等第一次移动再按方向决定拖哪一个，否则会被另一个挡住拖不动 */
+let overlapPending = false;
+/** 拖动期间外部值有变化，松手后再同步 */
+let modelChangedWhileDragging = false;
+
 // 显示 Tooltip 状态
 const showTooltip = ref<boolean[]>([false, false]);
 
 // Tooltip 引用，用于强制更新位置
-const tooltipRef0 = ref<InstanceType<typeof Tooltip> | null>(null);
-const tooltipRef1 = ref<InstanceType<typeof Tooltip> | null>(null);
+const tooltipRef0 = ref<TooltipRef | null>(null);
+const tooltipRef1 = ref<TooltipRef | null>(null);
 
 // 内部值
 const internalValue = ref<[number, number]>([props.min, props.min]);
@@ -56,17 +69,26 @@ const initValue = () => {
 
 initValue();
 
+const applyModelValue = (newVal: SliderComponentProps["modelValue"]) => {
+    if (newVal === undefined) {
+        internalValue.value = [props.min, props.min];
+    } else if (props.range && Array.isArray(newVal)) {
+        internalValue.value = [newVal[0], newVal[1]];
+    } else if (!props.range && typeof newVal === "number") {
+        internalValue.value = [props.min, newVal];
+    }
+};
+
 // 监听外部值变化
 watch(
     () => props.modelValue,
     (newVal) => {
-        if (newVal === undefined) {
-            internalValue.value = [props.min, props.min];
-        } else if (props.range && Array.isArray(newVal)) {
-            internalValue.value = [newVal[0], newVal[1]];
-        } else if (!props.range && typeof newVal === "number") {
-            internalValue.value = [props.min, newVal];
+        // 拖动中以手上的值为准：父组件回写若滞后一拍，直接同步会把手柄拽回旧位置
+        if (isDragging.value) {
+            modelChangedWhileDragging = true;
+            return;
         }
+        applyModelValue(newVal);
     }
 );
 
@@ -104,28 +126,20 @@ const getValueFromPercent = (percent: number): number => {
     return value;
 };
 
-// 根据位置计算百分比
-const getPercentFromPosition = (clientPos: number): number => {
+const clampPercent = (percent: number): number => Math.max(0, Math.min(100, percent));
+
+// 指针在轨道上的百分比；不做边界限制，拖动时要先扣掉按下偏移再限制
+const getPointerPercent = (e: PointerEvent): number => {
     if (!railRef.value) return 0;
 
     const rect = railRef.value.getBoundingClientRect();
-    let percent = 0;
+    const total = props.vertical ? rect.height : rect.width;
+    if (total <= 0) return 0;
 
-    if (props.vertical) {
-        const total = rect.height;
-        const offset = rect.bottom - clientPos;
-        percent = (offset / total) * 100;
-    } else {
-        const total = rect.width;
-        const offset = clientPos - rect.left;
-        percent = (offset / total) * 100;
-    }
+    const offset = props.vertical ? rect.bottom - e.clientY : e.clientX - rect.left;
+    const percent = (offset / total) * 100;
 
-    if (props.reverse) {
-        percent = 100 - percent;
-    }
-
-    return Math.max(0, Math.min(100, percent));
+    return props.reverse ? 100 - percent : percent;
 };
 
 // 轨道样式（已填充部分）
@@ -165,95 +179,31 @@ const trackStyle = computed(() => {
     }
 });
 
+// 手柄、步长点沿主轴的定位。用 transform 让自身中心对齐数值位置：
+// 写死的负 margin 只对 left / bottom 定位生效，反向或垂直反向时会偏开半个手柄
+const getAxisStyle = (percent: number): Record<string, string> => {
+    if (props.vertical) {
+        return props.reverse ? { top: `${percent}%`, transform: "translateY(-50%)" } : { bottom: `${percent}%`, transform: "translateY(50%)" };
+    }
+    return props.reverse ? { right: `${percent}%`, transform: "translateX(50%)" } : { left: `${percent}%`, transform: "translateX(-50%)" };
+};
+
 // 手柄位置
 const getHandleStyle = (index: number) => {
     const value = internalValue.value[index] ?? 0;
     const percent = getPercent(value);
 
-    if (props.vertical) {
-        return {
-            [props.reverse ? "top" : "bottom"]: `${percent}%`,
-            [props.reverse ? "bottom" : "top"]: "auto",
-            left: "0",
-            right: "auto"
-        };
-    } else {
-        return {
-            [props.reverse ? "right" : "left"]: `${percent}%`,
-            [props.reverse ? "left" : "right"]: "auto",
-            top: "0",
-            bottom: "auto"
-        };
-    }
+    return {
+        ...getAxisStyle(percent),
+        ...(props.vertical ? { left: "0", right: "auto" } : { top: "0", bottom: "auto" })
+    };
 };
 
-// 处理点击轨道
-const handleRailClick = (e: MouseEvent) => {
-    if (props.disabled) return;
-
-    // 如果点击的是手柄，不处理
-    const target = e.target as HTMLElement;
-    if (target.closest(".vort-slider-handle")) {
-        return;
-    }
-
-    const clientPos = props.vertical ? e.clientY : e.clientX;
-    const percent = getPercentFromPosition(clientPos);
-    const value = getValueFromPercent(percent);
-
-    if (props.range) {
-        const [start, end] = internalValue.value;
-        const mid = (start + end) / 2;
-
-        if (value < mid) {
-            internalValue.value = [value, end];
-        } else {
-            internalValue.value = [start, value];
-        }
-    } else {
-        internalValue.value = [props.min, value];
-    }
-
-    emitChange();
-    emitAfterChange();
-};
-
-// 开始拖拽
-const handleMouseDown = (e: MouseEvent, index: number) => {
-    if (props.disabled) return;
-
-    e.preventDefault();
-    e.stopPropagation();
-
-    // 让当前聚焦的元素失焦，避免与其他输入组件（如 InputNumber）的焦点冲突
-    if (document.activeElement instanceof HTMLElement) {
-        document.activeElement.blur();
-    }
-
-    isDragging.value = true;
-    activeHandleIndex.value = index;
-    showTooltip.value[index] = true;
-
-    // 立即更新一次位置
-    handleMouseMove(e);
-
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-};
-
-// 拖拽中
-const handleMouseMove = (e: MouseEvent) => {
-    if (!isDragging.value || activeHandleIndex.value === null) return;
-
-    const clientPos = props.vertical ? e.clientY : e.clientX;
-    const percent = getPercentFromPosition(clientPos);
-    const value = getValueFromPercent(percent);
-
-    const index = activeHandleIndex.value;
+// 写入某个手柄的新值。范围模式下两个手柄不交叉；值没变就不通知，拖动时少触发外部更新
+const updateHandleValue = (index: number, value: number) => {
     const newValue = [...internalValue.value] as [number, number];
 
     if (props.range) {
-        // 范围模式：确保两个手柄不交叉
         if (index === 0) {
             newValue[0] = Math.min(value, newValue[1]);
         } else {
@@ -263,40 +213,114 @@ const handleMouseMove = (e: MouseEvent) => {
         newValue[1] = value;
     }
 
+    if (newValue[0] === internalValue.value[0] && newValue[1] === internalValue.value[1]) return;
+
     internalValue.value = newValue;
     emitChange();
 
     // 强制更新 Tooltip 位置
     nextTick(() => {
-        const t0 = tooltipRef0.value as InstanceType<typeof Tooltip> | null;
-        const t1 = tooltipRef1.value as InstanceType<typeof Tooltip> | null;
-        if (index === 0 && t0 && "updatePosition" in t0) {
-            (t0 as { updatePosition?: () => void }).updatePosition?.();
-        } else if (index === 1 && t1 && "updatePosition" in t1) {
-            (t1 as { updatePosition?: () => void }).updatePosition?.();
-        }
+        (index === 0 ? tooltipRef0 : tooltipRef1).value?.updatePosition?.();
     });
 };
 
-// 结束拖拽
-const handleMouseUp = () => {
+/**
+ * 开始拖拽。
+ *
+ * 整个滑块（轨道、手柄、刻度）都在 pointerdown 时进入拖动：按在轨道上，最近的手柄先跳到按下位置，
+ * 不松手可以继续拖；按在手柄上则不跳值，拖动时保持按下那一刻的偏移。
+ * 指针被捕获到滑块上，拖出组件、移到画布 iframe 上或窗口外时，移动和松手事件仍然回到这里。
+ */
+const handlePointerDown = (e: PointerEvent) => {
+    // 只响应主指针的左键，右键、中键和多指触控的其余手指不触发
+    if (mergedDisabled.value || !e.isPrimary || e.button !== 0) return;
+    // 上一次拖动没等到松手事件时先收尾，不能让滑块一直卡在拖动态
+    if (isDragging.value) finishDrag();
+
+    // 让当前聚焦的元素失焦，避免与其他输入组件（如 InputNumber）的焦点冲突
+    if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+    }
+
+    const pointerPercent = getPointerPercent(e);
+    const handleEl = (e.target as Element).closest<HTMLElement>(".vort-slider-handle");
+    let index: number;
+
+    if (handleEl) {
+        index = handleEl.dataset.index === "0" ? 0 : 1;
+        dragOffsetPercent = pointerPercent - getPercent(internalValue.value[index] ?? props.min);
+        overlapPending = props.range && internalValue.value[0] === internalValue.value[1];
+    } else {
+        const value = getValueFromPercent(clampPercent(pointerPercent));
+        const [start, end] = internalValue.value;
+        index = props.range && value < (start + end) / 2 ? 0 : 1;
+        dragOffsetPercent = 0;
+        overlapPending = false;
+        updateHandleValue(index, value);
+    }
+
+    isDragging.value = true;
+    activeHandleIndex.value = index;
+    dragPointerId = e.pointerId;
+
+    try {
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+        // 指针已失效（如合成事件）时拿不到捕获，退回下面的 document 监听
+    }
+
+    document.addEventListener("pointermove", handlePointerMove);
+    document.addEventListener("pointerup", handlePointerUp);
+    document.addEventListener("pointercancel", handlePointerUp);
+};
+
+// 拖拽中
+const handlePointerMove = (e: PointerEvent) => {
+    if (!isDragging.value || e.pointerId !== dragPointerId || activeHandleIndex.value === null) return;
+
+    const value = getValueFromPercent(clampPercent(getPointerPercent(e) - dragOffsetPercent));
+
+    if (overlapPending) {
+        const shared = internalValue.value[0];
+        if (value === shared) return;
+        overlapPending = false;
+        activeHandleIndex.value = value < shared ? 0 : 1;
+    }
+
+    updateHandleValue(activeHandleIndex.value, value);
+};
+
+const handlePointerUp = (e: PointerEvent) => {
+    if (e.pointerId !== dragPointerId) return;
+    finishDrag();
+};
+
+// 结束拖拽。pointerup 之后浏览器还会补发 lostpointercapture，这里需要可重入
+const finishDrag = () => {
     if (!isDragging.value) return;
 
-    isDragging.value = false;
-    if (activeHandleIndex.value !== null) {
-        showTooltip.value[activeHandleIndex.value] = false;
-    }
-    activeHandleIndex.value = null;
+    document.removeEventListener("pointermove", handlePointerMove);
+    document.removeEventListener("pointerup", handlePointerUp);
+    document.removeEventListener("pointercancel", handlePointerUp);
 
-    document.removeEventListener("mousemove", handleMouseMove);
-    document.removeEventListener("mouseup", handleMouseUp);
+    isDragging.value = false;
+    // 重叠手柄拖动中可能换过手柄，两个提示都收起
+    showTooltip.value = [false, false];
+    activeHandleIndex.value = null;
+    dragPointerId = null;
+    overlapPending = false;
+
+    if (modelChangedWhileDragging) {
+        modelChangedWhileDragging = false;
+        applyModelValue(props.modelValue);
+    }
 
     emitAfterChange();
 };
 
 // 键盘控制
 const handleKeyDown = (e: KeyboardEvent, index: number) => {
-    if (props.disabled) return;
+    if (mergedDisabled.value) return;
 
     const step = props.step || 1;
     let handled = false;
@@ -381,18 +405,7 @@ const parsedMarks = computed(() => {
 });
 
 // 点样式
-const dotStyle = (value: number) => {
-    const percent = getPercent(value);
-    if (props.vertical) {
-        return {
-            [props.reverse ? "top" : "bottom"]: `${percent}%`
-        };
-    } else {
-        return {
-            [props.reverse ? "right" : "left"]: `${percent}%`
-        };
-    }
-};
+const dotStyle = (value: number) => getAxisStyle(getPercent(value));
 
 // 计算步长点
 const stepDots = computed(() => {
@@ -427,30 +440,32 @@ const isDotActive = (value: number): boolean => {
 const shouldShowTooltip = (index: number): boolean => {
     if (props.tooltip === false || props.tipFormatter === null) return false;
     if (props.tooltip === "always") return true;
-    return showTooltip.value[index] || isDragging.value;
+    return showTooltip.value[index] || activeHandleIndex.value === index;
 };
 
-// 处理鼠标进入/离开手柄
-const handleHandleMouseEnter = (index: number) => {
-    if (props.disabled || isDragging.value) return;
+// 处理指针进入/离开手柄。
+// 触屏没有悬停：用 mouseenter 的话，点按结束后浏览器补发的兼容鼠标事件会把提示重新打开且一直挂着
+const handleHandlePointerEnter = (e: PointerEvent, index: number) => {
+    if (mergedDisabled.value || isDragging.value || e.pointerType === "touch") return;
     showTooltip.value[index] = true;
 };
 
-const handleHandleMouseLeave = (index: number) => {
-    if (props.disabled || isDragging.value) return;
+const handleHandlePointerLeave = (index: number) => {
+    if (mergedDisabled.value || isDragging.value) return;
     showTooltip.value[index] = false;
 };
 
 // 清理事件监听
 onBeforeUnmount(() => {
-    document.removeEventListener("mousemove", handleMouseMove);
-    document.removeEventListener("mouseup", handleMouseUp);
+    document.removeEventListener("pointermove", handlePointerMove);
+    document.removeEventListener("pointerup", handlePointerUp);
+    document.removeEventListener("pointercancel", handlePointerUp);
 });
 
 // 计算容器类名
 const containerClass = computed(() => {
     const classes = ["vort-slider"];
-    if (props.disabled) classes.push("vort-slider-disabled");
+    if (mergedDisabled.value) classes.push("vort-slider-disabled");
     if (props.vertical) classes.push("vort-slider-vertical");
     if (parsedMarks.value.length > 0) classes.push("vort-slider-with-marks");
     if (props.class) classes.push(props.class);
@@ -459,7 +474,8 @@ const containerClass = computed(() => {
 </script>
 
 <template>
-    <div :class="containerClass" @click="handleRailClick">
+    <!-- mousedown.prevent：不抢焦点、不起文本选择；mousedown 照常冒泡，下拉等浮层的点外关闭不受影响 -->
+    <div :class="containerClass" @pointerdown="handlePointerDown" @lostpointercapture="finishDrag" @mousedown.prevent>
         <div ref="railRef" class="vort-slider-rail">
             <!-- 轨道 -->
             <div class="vort-slider-track" :style="trackStyle" />
@@ -490,16 +506,17 @@ const containerClass = computed(() => {
             <div
                 v-if="range"
                 class="vort-slider-handle"
+                :class="{ 'vort-slider-handle-dragging': activeHandleIndex === 0 }"
                 :style="getHandleStyle(0)"
+                data-index="0"
                 tabindex="0"
                 role="slider"
                 :aria-valuenow="internalValue[0]"
                 :aria-valuemin="min"
                 :aria-valuemax="max"
-                :aria-disabled="disabled"
-                @mousedown="handleMouseDown($event, 0)"
-                @mouseenter="handleHandleMouseEnter(0)"
-                @mouseleave="handleHandleMouseLeave(0)"
+                :aria-disabled="mergedDisabled"
+                @pointerenter="handleHandlePointerEnter($event, 0)"
+                @pointerleave="handleHandlePointerLeave(0)"
                 @keydown="handleKeyDown($event, 0)"
             >
                 <Tooltip
@@ -519,16 +536,17 @@ const containerClass = computed(() => {
             <!-- 手柄 2（单值模式的唯一手柄，或范围模式的结束手柄） -->
             <div
                 class="vort-slider-handle"
+                :class="{ 'vort-slider-handle-dragging': activeHandleIndex === 1 }"
                 :style="getHandleStyle(1)"
+                data-index="1"
                 tabindex="0"
                 role="slider"
                 :aria-valuenow="internalValue[1]"
                 :aria-valuemin="min"
                 :aria-valuemax="max"
-                :aria-disabled="disabled"
-                @mousedown="handleMouseDown($event, 1)"
-                @mouseenter="handleHandleMouseEnter(1)"
-                @mouseleave="handleHandleMouseLeave(1)"
+                :aria-disabled="mergedDisabled"
+                @pointerenter="handleHandlePointerEnter($event, 1)"
+                @pointerleave="handleHandlePointerLeave(1)"
                 @keydown="handleKeyDown($event, 1)"
             >
                 <Tooltip
@@ -642,17 +660,15 @@ const containerClass = computed(() => {
     user-select: none;
 }
 
-/* 水平模式定位 */
+/* 水平模式定位（主轴居中由 getAxisStyle 的 transform 负责） */
 .vort-slider:not(.vort-slider-vertical) .vort-slider-handle {
     top: 0;
     margin-top: -5px;
-    margin-left: -7px;
 }
 
 /* 垂直模式定位 */
 .vort-slider-vertical .vort-slider-handle {
     left: 0;
-    margin-bottom: -7px;
     margin-left: -5px;
 }
 
@@ -674,7 +690,9 @@ const containerClass = computed(() => {
     pointer-events: auto;
 }
 
-.vort-slider-handle:hover .vort-slider-handle-inner {
+/* 拖动时指针被捕获到容器上、离开了手柄，仍保持悬停态 */
+.vort-slider-handle:hover .vort-slider-handle-inner,
+.vort-slider-handle-dragging .vort-slider-handle-inner {
     border-color: var(--vort-primary-hover);
     transform: scale(1.2);
 }
@@ -705,7 +723,6 @@ const containerClass = computed(() => {
     width: 8px;
     height: 8px;
     margin-top: -2px;
-    margin-left: -4px;
     background: #fff;
     border: 2px solid rgba(0, 0, 0, 0.06);
     border-radius: 50%;
@@ -713,7 +730,7 @@ const containerClass = computed(() => {
 }
 
 .vort-slider-vertical .vort-slider-dot {
-    margin-top: -4px;
+    margin-top: 0;
     margin-left: -2px;
 }
 

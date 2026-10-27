@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { LoadingOutlined } from "@/components/vort/icons";
+import { LoadingOutlined } from "../icons";
 import type { ButtonProps, ButtonVariant } from "./types";
 
 defineOptions({ name: "VortButton" });

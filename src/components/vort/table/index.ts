@@ -8,5 +8,7 @@ export type {
     TableSize,
     SortState,
     TableCellScope,
-    TableHeaderScope
+    TableHeaderScope,
+    TableProps,
+    TableEmits
 } from "./types";

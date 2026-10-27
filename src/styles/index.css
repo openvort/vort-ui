@@ -1,0 +1,2 @@
+/* workspace 源码入口；发布时由构建产物替换为 dist/style.css。 */
+@import "../components/vort/styles/index.css";

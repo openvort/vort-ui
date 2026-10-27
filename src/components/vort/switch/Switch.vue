@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, useAttrs } from "vue";
 import type { PropType } from "vue";
-import { LoadingOutlined } from "@/components/vort/icons";
+import { LoadingOutlined } from "../icons";
+import { useFormDisabled } from "../form/useFormDisabled";
 import type { SwitchSize, SwitchValue } from "./types";
 
 defineOptions({ name: "VortSwitch", inheritAttrs: false });
@@ -93,11 +94,14 @@ const isChecked = computed(() => {
     return Boolean(props.checked);
 });
 
+/** disabled 合并：组件 prop > Form 级 disabled > 默认 false */
+const mergedDisabled = useFormDisabled(() => props.disabled);
+
 /** 是否阻断交互（外部 loading 只阻断交互，不直接设置原生 disabled） */
-const isInteractionBlocked = computed(() => props.disabled || props.loading || isLoading.value);
+const isInteractionBlocked = computed(() => mergedDisabled.value || props.loading || isLoading.value);
 
 /** 是否使用原生 disabled（仅在真正禁用或内部切换中使用） */
-const isActuallyDisabled = computed(() => props.disabled || isLoading.value);
+const isActuallyDisabled = computed(() => mergedDisabled.value || isLoading.value);
 
 /** 实际显示的加载状态 */
 const showLoading = computed(() => props.loading || isLoading.value);
@@ -204,6 +208,8 @@ const handleKeydown = (event: KeyboardEvent) => {
     position: relative;
     display: inline-flex;
     align-items: center;
+    /* 与 Badge 同款：不设时 inline-flex 按内部文字基线对齐，在表格单元格里会比同行文字偏上 */
+    vertical-align: middle;
     box-sizing: border-box;
     min-width: 44px;
     height: 22px;

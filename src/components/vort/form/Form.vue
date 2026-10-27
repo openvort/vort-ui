@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, provide, watch, ref, onMounted, onUnmounted, nextTick } from "vue";
+import { computed, provide, watch, ref, toRef, onMounted, onUnmounted } from "vue";
 import { useForm } from "vee-validate";
 import { toTypedSchema } from "@vee-validate/zod";
 import type { ZodType } from "zod";
+import { formContextKey } from "./constants";
+import type { FormVariant } from "./types";
 
 // 生成唯一 ID 的计数器
 let formItemIdCounter = 0;
@@ -14,7 +16,7 @@ defineOptions({ name: "VortForm" });
 type FormLayout = "horizontal" | "vertical" | "inline";
 type FormSize = "large" | "middle" | "small";
 type LabelAlign = "left" | "right";
-type ValidateTrigger = "change" | "blur" | Array<"change" | "blur">;
+type ValidateTrigger = "change" | "blur" | "submit" | Array<"change" | "blur" | "submit">;
 
 interface ColProps {
     /** 栅格占位格数 */
@@ -44,8 +46,12 @@ interface Props {
     disabled?: boolean;
     /** 设置字段组件的尺寸 */
     size?: FormSize;
-    /** 统一设置字段触发验证的时机 */
+    /** 表单内录入类控件的形态变体；控件自身 variant / bordered 优先 */
+    variant?: FormVariant;
+    /** 统一设置字段触发验证的时机，submit 表示仅在提交或手动校验时触发 */
     validateTrigger?: ValidateTrigger;
+    /** FormItem 卸载时是否保留内部字段值，默认 false；不保留已卸载字段的局部验证器 */
+    keepValuesOnUnmount?: boolean;
     /** 是否显示必填标记 */
     requiredMark?: boolean | "optional";
     /** 是否启用响应式布局（小屏幕自动切换为垂直布局） */
@@ -63,6 +69,7 @@ const props = withDefaults(defineProps<Props>(), {
     disabled: false,
     size: "middle",
     validateTrigger: "change",
+    keepValuesOnUnmount: false,
     requiredMark: true,
     responsive: true,
     responsiveBreakpoint: 576
@@ -125,89 +132,26 @@ const validationSchema = computed(() => {
 });
 
 // 使用 vee-validate 的 useForm
-const { handleSubmit, resetForm, setFieldValue, setFieldError, validate, errors, values } = useForm({
-    validationSchema: validationSchema.value,
-    initialValues: props.model
+// schema 以 computed 传入，rules 随业务状态切换（如阶梯表的门槛单位）时后续校验按新规则走；
+// vee-validate 在 schema 变化时只重算已校验过的字段，错误是否展示仍由 FormItem 的交互状态决定。
+// 挂载时 rules 为空的表单走 FormItem 字段级规则，之后再传入 schema 不会接管。
+const { handleSubmit, resetForm, setFieldValue, setFieldError, setValues, validate, validateField, errors, values } = useForm({
+    validationSchema,
+    initialValues: props.model,
+    keepValuesOnUnmount: toRef(props, "keepValuesOnUnmount")
 });
 
-/**
- * 递归遍历对象，生成带路径的键值对
- * @param obj 要遍历的对象
- * @param prefix 路径前缀
- * @param result 结果数组
- */
-const isPlainObject = (val: unknown): val is Record<string, unknown> => {
-    return Object.prototype.toString.call(val) === "[object Object]";
-};
-
-const flattenObject = (obj: unknown, prefix = "", result: Array<{ path: string; value: unknown }> = []) => {
-    if (obj === null || obj === undefined) {
-        result.push({ path: prefix, value: obj });
-        return result;
-    }
-
-    // Date / 非纯对象：作为“叶子值”处理（否则会被当成 object 递归，导致字段值无法同步进 vee-validate）
-    if (obj instanceof Date || (typeof obj === "object" && !Array.isArray(obj) && !isPlainObject(obj))) {
-        result.push({ path: prefix, value: obj });
-        return result;
-    }
-
-    if (Array.isArray(obj)) {
-        // 数组：遍历每个元素
-        obj.forEach((item, index) => {
-            const path = prefix ? `${prefix}[${index}]` : `[${index}]`;
-            if (typeof item === "object" && item !== null) {
-                flattenObject(item, path, result);
-            } else {
-                result.push({ path, value: item });
-            }
-        });
-    } else if (typeof obj === "object" && isPlainObject(obj)) {
-        // 对象：遍历每个属性
-        for (const [key, value] of Object.entries(obj)) {
-            const path = prefix ? `${prefix}.${key}` : key;
-            if (typeof value === "object" && value !== null) {
-                flattenObject(value, path, result);
-            } else {
-                result.push({ path, value });
-            }
-        }
-    } else {
-        result.push({ path: prefix, value: obj });
-    }
-
-    return result;
-};
-
-/**
- * 从 vee-validate values 中按路径获取值
- */
-const getValueByPath = (obj: Record<string, unknown>, path: string): unknown => {
-    // 处理路径如 "promotionTypeData[0].minAmount"
-    const keys = path.replace(/\[(\d+)\]/g, ".$1").split(".");
-    let current: unknown = obj;
-    for (const key of keys) {
-        if (current === null || current === undefined) return undefined;
-        current = (current as Record<string, unknown>)[key];
-    }
-    return current;
-};
-
 // 监听 model 变化，同步到 vee-validate（实现双向绑定校验）
+// setValues 合并对象、替换传入的数组，不会删除 model 中已移除的嵌套对象键；
+// keepValuesOnUnmount 仅控制字段卸载时是否删值，不改变这份 model 同步策略
 watch(
     () => props.model,
     (newModel) => {
-        if (newModel) {
-            // 递归遍历所有嵌套字段
-            const flatFields = flattenObject(newModel);
-            for (const { path, value } of flatFields) {
-                // 只同步发生变化的字段
-                const currentValue = getValueByPath(values, path);
-                if (currentValue !== value) {
-                    setFieldValue(path, value);
-                }
-            }
-        }
+        if (!newModel) return;
+        // 仅提交触发时，模型同步不能在输入阶段重新校验整张表。
+        const trigger = props.validateTrigger;
+        const validateOnModelUpdate = Array.isArray(trigger) ? trigger.includes("change") : trigger === "change";
+        setValues({ ...newModel }, validateOnModelUpdate);
     },
     { deep: true }
 );
@@ -261,6 +205,32 @@ const unregisterLabelWidth = (id: string) => {
 
 // ==================== 提供给子组件的上下文 ====================
 
+// 是否展示字段级校验状态（例如点击提交或手动调用 validateFields）
+const isValidated = ref(false);
+// 重置计数器，用于通知子组件重置交互状态
+const resetCount = ref(0);
+// 只把服务端错误交给当前确实能展示错误文案的 FormItem，未承接项由业务层兜底提示。
+const registeredFields = new Set<{ getName: () => string | undefined; canDisplay: () => boolean }>();
+
+const registerField = (getName: () => string | undefined, canDisplay: () => boolean): (() => void) => {
+    const field = { getName, canDisplay };
+    registeredFields.add(field);
+    return () => {
+        registeredFields.delete(field);
+    };
+};
+
+const canDisplayField = (name: string) => Array.from(registeredFields).some((field) => field.getName() === name && field.canDisplay());
+
+// submit 触发模式下，校验结果由业务层以 message 形式反馈，不渲染字段级错误态。
+const shouldShowValidationState = (trigger: ValidateTrigger) => {
+    return Array.isArray(trigger) ? trigger.some((item) => item === "change" || item === "blur") : trigger !== "submit";
+};
+
+const updateValidationState = () => {
+    isValidated.value = shouldShowValidationState(props.validateTrigger);
+};
+
 // 提供给子组件的上下文（使用 computed 保持响应性）
 const formContext = computed(() => ({
     layout: effectiveLayout.value,
@@ -272,11 +242,16 @@ const formContext = computed(() => ({
     colon: props.colon,
     disabled: props.disabled,
     size: props.size,
+    variant: props.variant,
     requiredMark: props.requiredMark,
     validateTrigger: props.validateTrigger,
     errors: errors.value,
     setFieldValue,
     setFieldError,
+    validateField,
+    isValidated: isValidated.value,
+    resetCount: resetCount.value,
+    registerField,
     // labelWidth="auto" 相关方法
     registerLabelWidth,
     updateLabelWidth,
@@ -284,31 +259,62 @@ const formContext = computed(() => ({
     generateLabelId
 }));
 
-provide("formContext", formContext);
+provide(formContextKey, formContext);
+
+const formEl = ref<HTMLFormElement | null>(null);
+
+/**
+ * vee-validate 聚合结果时会把字段路径按字母序排好，业务层拿「第一条错误」提示用户时就会跳到
+ * 页面中间的字段。这里按 FormItem 在页面上的先后重排，没挂到 FormItem 的字段保持原序垫在最后。
+ */
+const sortErrorsByFieldOrder = (errorMap: Record<string, string>): Record<string, string> => {
+    const nodes = formEl.value?.querySelectorAll<HTMLElement>("[data-field]");
+    if (!nodes?.length) return errorMap;
+    const order = new Map<string, number>();
+    nodes.forEach((node, index) => {
+        const field = node.dataset.field;
+        if (field && !order.has(field)) order.set(field, index);
+    });
+    const rank = (key: string) => order.get(key) ?? Number.MAX_SAFE_INTEGER;
+    const sorted: Record<string, string> = {};
+    for (const key of Object.keys(errorMap).sort((a, b) => rank(a) - rank(b))) {
+        sorted[key] = errorMap[key] ?? "";
+    }
+    return sorted;
+};
 
 // 表单提交
 const onSubmit = handleSubmit(
     (formValues) => {
+        updateValidationState();
         emit("finish", formValues);
     },
     (validationErrors) => {
+        updateValidationState();
         const errorMap: Record<string, string> = {};
         for (const key in validationErrors.errors) {
             errorMap[key] = validationErrors.errors[key] || "";
         }
-        emit("finishFailed", errorMap);
+        emit("finishFailed", sortErrorsByFieldOrder(errorMap));
     }
 );
 
 // 重置表单
 const resetFields = () => {
+    isValidated.value = false;
+    resetCount.value++;
     resetForm({
         values: props.model
     });
 };
 
+/** 已在 FormItem 下方展示的错误字段；submit 触发模式不渲染字段错误态，始终为空 */
+const getDisplayedFields = (errorMap: Record<string, string>) =>
+    isValidated.value ? Object.keys(errorMap).filter((name) => errorMap[name] && canDisplayField(name)) : [];
+
 // 验证表单
 const validateFields = async (names?: string | string[]) => {
+    updateValidationState();
     const result = await validate();
     if (names) {
         const nameArr = Array.isArray(names) ? names : [names];
@@ -318,12 +324,23 @@ const validateFields = async (names?: string | string[]) => {
                 filteredErrors[name] = errors.value[name] || "";
             }
         }
+        const sortedErrors = sortErrorsByFieldOrder(filteredErrors);
         return {
             valid: Object.keys(filteredErrors).length === 0,
-            errors: filteredErrors
+            errors: sortedErrors,
+            displayedFields: getDisplayedFields(sortedErrors)
         };
     }
-    return result;
+    const sortedErrors = sortErrorsByFieldOrder(result.errors as Record<string, string>);
+    return { ...result, errors: sortedErrors, displayedFields: getDisplayedFields(sortedErrors) };
+};
+
+/** 把字段所在的 FormItem 滚动到可视区，已在可视区时不滚动 */
+const scrollToField = (name: string) => {
+    const nodes = formEl.value?.querySelectorAll<HTMLElement>("[data-field]") ?? [];
+    Array.from(nodes)
+        .find((node) => node.dataset.field === name)
+        ?.scrollIntoView({ block: "nearest" });
 };
 
 /**
@@ -343,6 +360,10 @@ const validateCompat = async (names?: string | string[]) => {
 
 // 清除验证
 const clearValidate = (names?: string | string[]) => {
+    if (!names) {
+        isValidated.value = false;
+        resetCount.value++;
+    }
     if (names) {
         const nameArr = Array.isArray(names) ? names : [names];
         for (const name of nameArr) {
@@ -360,6 +381,28 @@ const setFieldsValue = (fieldsValue: Record<string, unknown>) => {
     for (const [key, value] of Object.entries(fieldsValue)) {
         setFieldValue(key, value);
     }
+};
+
+/**
+ * 写入外部校验结论（服务端返回的字段级错误），返回本次可展示错误的字段路径。
+ * 字段路径与 FormItem.name 精确匹配；空文案、未注册或不能展示错误的字段不写入。
+ *
+ * 同时置 isValidated：这些错误不是用户交互产生的，若不放行，FormItem 会因为
+ * 「用户还没碰过这个字段」而拒绝渲染，错误就静默消失了。
+ *
+ * 用户随后修改字段会触发 model 的整表重新校验，把这里写入的错误清掉——这是对的，
+ * 服务端针对旧值的结论不该压在新输入上。
+ */
+const setFields = (fieldErrors: Record<string, string>): string[] => {
+    const displayedFields: string[] = [];
+    for (const [name, error] of Object.entries(fieldErrors)) {
+        if (!name || !error.trim()) continue;
+        if (!canDisplayField(name)) continue;
+        setFieldError(name, error);
+        displayedFields.push(name);
+    }
+    if (displayedFields.length > 0) isValidated.value = true;
+    return displayedFields;
 };
 
 // 获取字段值
@@ -390,12 +433,16 @@ defineExpose({
     /** 设置字段值 */
     setFieldsValue,
     /** 获取字段值 */
-    getFieldsValue
+    getFieldsValue,
+    /** 写入外部（服务端）字段级错误，返回已承接的字段路径 */
+    setFields,
+    /** 滚动到字段 */
+    scrollToField
 });
 </script>
 
 <template>
-    <form :class="formClasses" @submit.prevent="onSubmit">
+    <form ref="formEl" :class="formClasses" @submit.prevent="onSubmit">
         <slot />
     </form>
 </template>

@@ -1,0 +1,9 @@
+packages:
+  - .
+catalog:
+  typescript: ~5.9.0
+  zod: ^3.25.76
+overrides:
+  postcss: 8.5.8
+onlyBuiltDependencies:
+  - esbuild

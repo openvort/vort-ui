@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, inject, ref, useSlots, Transition, type ComputedRef, onMounted, onUnmounted, onBeforeUnmount, watch, nextTick } from "vue";
+import { computed, inject, provide, ref, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
 import { useField } from "vee-validate";
-import { CheckCircleFilled, CloseCircleFilled, ExclamationCircleFilled, LoadingOutlined, QuestionOutlined } from "@/components/vort/icons";
-import { Tooltip } from "@/components/vort/tooltip";
-import { useLocale } from "@/components/vort/locale/useLocale";
+import { CheckCircleFilled, CloseCircleFilled, ExclamationCircleFilled, LoadingOutlined, QuestionOutlined } from "../icons";
+import { Tooltip } from "../tooltip";
+import { useLocale } from "../locale/useLocale";
+import { formContextKey, formItemStatusKey } from "./constants";
 
 defineOptions({ name: "VortFormItem" });
 
@@ -58,30 +59,18 @@ const props = withDefaults(defineProps<Props>(), {
     hasFeedback: false
 });
 
-const slots = useSlots();
+// 注入 Form 上下文（类型由 formContextKey 的 InjectionKey 自动推导）
+const formContext = inject(formContextKey, undefined);
+const formItemEl = ref<HTMLElement | null>(null);
+let unregisterField: (() => void) | undefined;
 
-// 注入 Form 上下文
-interface FormContext {
-    layout: string;
-    labelAlign: string;
-    labelWidth?: string;
-    autoLabelWidth?: string;
-    labelCol?: ColProps;
-    wrapperCol?: ColProps;
-    colon: boolean;
-    disabled: boolean;
-    size: string;
-    requiredMark: boolean | "optional";
-    validateTrigger: string | string[];
-    errors: Record<string, string>;
-    // labelWidth="auto" 相关方法
-    registerLabelWidth?: (id: string, width: number) => void;
-    updateLabelWidth?: (id: string, width: number) => void;
-    unregisterLabelWidth?: (id: string) => void;
-    generateLabelId?: () => string;
-}
-
-const formContext = inject<ComputedRef<FormContext | undefined>>("formContext");
+// 离屏但可滚动到的字段仍可承接错误；隐藏项、帮助文案覆盖和 inline 布局不能承接。
+const canDisplayFieldError = () => {
+    const element = formItemEl.value;
+    if (!element?.isConnected || props.help || layout.value === "inline" || element.getClientRects().length === 0) return false;
+    const visibility = getComputedStyle(element).visibility;
+    return visibility !== "hidden" && visibility !== "collapse";
+};
 
 // Label 元素引用
 const labelRef = ref<HTMLElement | null>(null);
@@ -125,6 +114,7 @@ const unregisterLabel = () => {
 };
 
 onMounted(() => {
+    unregisterField = formContext?.value?.registerField(() => props.name, canDisplayFieldError);
     // 延迟测量，确保 DOM 渲染完成
     nextTick(() => {
         measureAndRegisterLabelWidth();
@@ -132,6 +122,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+    unregisterField?.();
     unregisterLabel();
 });
 
@@ -234,15 +225,15 @@ const rulesValidator = computed(() => {
     return undefined;
 });
 
-const {
-    errorMessage,
-    meta,
-    validate: validateField
-} = props.name
+const validateTrigger = formContext?.value?.validateTrigger;
+const validateOnValueUpdate = Array.isArray(validateTrigger) ? validateTrigger.includes("change") : validateTrigger ? validateTrigger === "change" : true;
+
+const { errorMessage, meta } = props.name
     ? useField(fieldName, rulesValidator, {
-          validateOnValueUpdate: true
+          // submit 触发的表单由业务提交动作统一校验，输入时不产生字段错误态。
+          validateOnValueUpdate
       })
-    : { errorMessage: ref(""), meta: ref<Record<string, unknown>>({}), validate: () => Promise.resolve({ valid: true }) };
+    : { errorMessage: ref(""), meta: ref<Record<string, unknown>>({}) };
 
 // 计算最终的 labelWidth
 const finalLabelWidth = computed(() => {
@@ -276,6 +267,41 @@ const showColon = computed(() => {
 const layout = computed(() => formContext?.value?.layout || "horizontal");
 const labelAlign = computed(() => formContext?.value?.labelAlign || "right");
 
+// 记录用户是否与此表单项发生过交互
+const isInteracted = ref(false);
+
+const handleUserInteraction = (event: Event) => {
+    // 聚焦问号只为查看说明，不算编辑字段，不能触发或清除校验状态。
+    if (event.target instanceof Element && event.target.closest(".vort-form-item-tooltip")) return;
+    // 提交触发模式下，聚焦、输入和 change 都不能提前展示错误状态。
+    const context = formContext?.value;
+    const trigger = context?.validateTrigger;
+    const tracksInteraction = Array.isArray(trigger) ? trigger.some((item) => item === "change" || item === "blur") : trigger ? trigger !== "submit" : true;
+    if (!tracksInteraction) {
+        // 用户开始修改已提交过的字段时清除上一轮结论，但不重新触发校验。
+        if (props.name && context) context.setFieldError(props.name, "");
+        return;
+    }
+    isInteracted.value = true;
+};
+
+// 监听表单整体校验状态和重置计数器，如果被重置，则同步重置当前项的交互状态
+watch(
+    () => formContext?.value?.resetCount,
+    () => {
+        isInteracted.value = false;
+    }
+);
+
+watch(
+    () => formContext?.value?.isValidated,
+    (val) => {
+        if (!val) {
+            isInteracted.value = false;
+        }
+    }
+);
+
 // 验证状态
 const validateStatus = computed<ValidateStatus>(() => {
     if (props.validateStatus) return props.validateStatus;
@@ -283,34 +309,67 @@ const validateStatus = computed<ValidateStatus>(() => {
 
     // 从 form context 获取错误信息
     const contextError = formContext?.value?.errors?.[props.name];
-    if (contextError || errorMessage.value) return "error";
-    if ("value" in meta && (meta.value as { valid?: boolean })?.valid) return "success";
+    if (contextError || errorMessage.value) {
+        // 只有当用户与当前项交互过，或表单整体被校验过，才显示错误状态
+        if (isInteracted.value || formContext?.value?.isValidated) {
+            return "error";
+        }
+    }
+    if ("value" in meta && (meta.value as { valid?: boolean })?.valid) {
+        // 只有当用户与当前项交互过，或表单整体被校验过，才显示成功状态
+        if (isInteracted.value || formContext?.value?.isValidated) {
+            return "success";
+        }
+    }
     return "";
 });
+
+// 把 error / warning 下发给其中的录入控件，由控件按自身形态显示状态样式
+provide(
+    formItemStatusKey,
+    computed(() => (validateStatus.value === "error" || validateStatus.value === "warning" ? validateStatus.value : undefined))
+);
 
 // 验证消息
 const validationMessage = computed(() => {
     if (props.help) return props.help;
     if (!props.name) return "";
-    return formContext?.value?.errors?.[props.name] || errorMessage.value || "";
-});
-
-// 是否显示必填标记
-const showRequired = computed(() => {
-    const requiredMark = formContext?.value?.requiredMark ?? true;
-    if (!requiredMark) return false;
-    if (requiredMark === "optional") {
-        // optional 模式下，非必填项显示"（可选）"
-        return !props.required;
+    const error = formContext?.value?.errors?.[props.name] || errorMessage.value || "";
+    if (error) {
+        // 只有当用户与当前项交互过，或表单整体被校验过，才显示错误消息
+        if (isInteracted.value || formContext?.value?.isValidated) {
+            return error;
+        }
     }
-    // 默认模式下，必填项显示 *
-    return props.required;
+    return "";
 });
 
 // 是否为 optional 模式
 const isOptionalMode = computed(() => {
     return formContext?.value?.requiredMark === "optional";
 });
+
+// ===================== 问号提示 =====================
+const tooltipRef = ref<InstanceType<typeof Tooltip> | null>(null);
+const isTooltipOpen = ref(false);
+
+const tooltipAriaLabel = computed(() => (props.label ? formT("tooltip_label", { label: props.label }) : formT("tooltip_label_default")));
+
+// 悬停之外也支持键盘：聚焦即打开，失焦关闭，Enter / 空格重新打开。
+const showTooltip = () => tooltipRef.value?.show();
+const hideTooltip = () => tooltipRef.value?.hide();
+
+const handleTooltipKeydown = (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+        // 提示打开时 Esc 只关闭提示，不连带关闭外层弹窗。
+        if (!isTooltipOpen.value) return;
+        event.stopPropagation();
+        hideTooltip();
+    } else if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        showTooltip();
+    }
+};
 
 // 表单项样式
 const formItemClasses = computed(() => {
@@ -462,7 +521,14 @@ const feedbackIconClass = computed(() => {
 </script>
 
 <template>
-    <div :class="formItemClasses">
+    <div
+        ref="formItemEl"
+        :class="formItemClasses"
+        :data-field="name || undefined"
+        @focusin="handleUserInteraction"
+        @change="handleUserInteraction"
+        @input="handleUserInteraction"
+    >
         <!-- Label 区域 -->
         <div v-if="label || $slots.label" ref="labelRef" :class="labelClasses" :style="labelStyle">
             <label :for="name" class="vort-form-item-label-text">
@@ -474,13 +540,25 @@ const feedbackIconClass = computed(() => {
                 <span v-if="!props.required && isOptionalMode" class="vort-form-item-optional-mark">{{ formT("optional") }}</span>
                 <!-- 冒号 -->
                 <span v-if="showColon" class="vort-form-item-colon">:</span>
-                <!-- Tooltip -->
-                <Tooltip v-if="tooltip" placement="bottom" style="padding: 12px 16px">
-                    <template #title>{{ tooltip }}</template>
-                    <span class="vort-form-item-tooltip">
-                        <QuestionOutlined />
-                    </span>
-                </Tooltip>
+                <!-- 问号提示：外层只管与标签文字的间距，让触发区与图标同大、浮层对准图标中心。
+                     阻止点击的默认行为，避免点问号时 label 把焦点转给关联控件。 -->
+                <span v-if="tooltip" class="vort-form-item-tooltip-wrapper">
+                    <Tooltip ref="tooltipRef" placement="top" @open-change="isTooltipOpen = $event">
+                        <template #title>{{ tooltip }}</template>
+                        <span
+                            class="vort-form-item-tooltip"
+                            role="button"
+                            tabindex="0"
+                            :aria-label="tooltipAriaLabel"
+                            @click.prevent
+                            @focus="showTooltip"
+                            @blur="hideTooltip"
+                            @keydown="handleTooltipKeydown"
+                        >
+                            <QuestionOutlined />
+                        </span>
+                    </Tooltip>
+                </span>
             </label>
         </div>
 
@@ -629,16 +707,32 @@ const feedbackIconClass = computed(() => {
     margin-inline-end: 8px;
 }
 
-/* Tooltip */
-.vort-form-item-tooltip {
-    color: var(--vort-text-quaternary);
-    margin-inline-start: 4px;
+/* 问号提示：紧跟标签文字，与文字垂直居中 */
+.vort-form-item-tooltip-wrapper {
     display: inline-flex;
-    align-items: center;
+    margin-inline-start: 4px;
+    /* 标签文字被改成块级排版时（如英文环境）仍与文字居中 */
+    vertical-align: -0.125em;
 }
 
-.vort-form-item-tooltip:hover {
+.vort-form-item-tooltip {
+    display: inline-flex;
+    align-items: center;
+    color: var(--vort-text-quaternary);
+    border-radius: 50%;
+    transition:
+        color 0.2s,
+        box-shadow 0.2s;
+}
+
+.vort-form-item-tooltip:hover,
+.vort-form-item-tooltip:focus-visible {
     color: var(--vort-text-secondary);
+}
+
+.vort-form-item-tooltip:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--vort-primary-shadow, rgba(20, 86, 240, 0.1));
 }
 
 /* 控件区域 */
@@ -753,52 +847,9 @@ const feedbackIconClass = computed(() => {
 /* 额外信息 */
 .vort-form-item-extra {
     color: var(--vort-form-extra-color);
-    font-size: 12px;
+    font-size: var(--vort-form-extra-font-size);
     line-height: 1.5715;
     padding-top: 2px;
-}
-
-/* 校验状态样式 */
-.vort-form-item-has-error :deep(input),
-.vort-form-item-has-error :deep(.vort-input),
-.vort-form-item-has-error :deep(.vort-input-wrapper),
-.vort-form-item-has-error :deep(.vort-input-number),
-.vort-form-item-has-error :deep(.vort-select-trigger) {
-    border-color: var(--vort-error) !important;
-}
-
-.vort-form-item-has-error :deep(input:focus),
-.vort-form-item-has-error :deep(.vort-input:focus-within),
-.vort-form-item-has-error :deep(.vort-input-wrapper:focus-within),
-.vort-form-item-has-error :deep(.vort-input-number:focus-within),
-.vort-form-item-has-error :deep(.vort-select-trigger:focus) {
-    border-color: var(--vort-error) !important;
-    box-shadow: 0 0 0 2px rgba(255, 77, 79, 0.06) !important;
-}
-
-.vort-form-item-has-warning :deep(input),
-.vort-form-item-has-warning :deep(.vort-input),
-.vort-form-item-has-warning :deep(.vort-input-wrapper),
-.vort-form-item-has-warning :deep(.vort-input-number),
-.vort-form-item-has-warning :deep(.vort-select-trigger) {
-    border-color: var(--vort-warning) !important;
-}
-
-.vort-form-item-has-warning :deep(input:focus),
-.vort-form-item-has-warning :deep(.vort-input:focus-within),
-.vort-form-item-has-warning :deep(.vort-input-wrapper:focus-within),
-.vort-form-item-has-warning :deep(.vort-input-number:focus-within),
-.vort-form-item-has-warning :deep(.vort-select-trigger:focus) {
-    border-color: var(--vort-warning) !important;
-    box-shadow: 0 0 0 2px rgba(250, 173, 20, 0.1) !important;
-}
-
-.vort-form-item-has-success :deep(input),
-.vort-form-item-has-success :deep(.vort-input),
-.vort-form-item-has-success :deep(.vort-input-wrapper),
-.vort-form-item-has-success :deep(.vort-input-number),
-.vort-form-item-has-success :deep(.vort-select-trigger) {
-    border-color: var(--vort-success) !important;
 }
 
 /* 加载动画 */

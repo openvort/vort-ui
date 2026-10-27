@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
-import { CheckCircleFilled, InfoCircleFilled, ExclamationCircleFilled, CloseCircleFilled } from "@/components/vort/icons";
-import LoadingOutlined from "@/components/vort/icons/LoadingOutlined.vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { CheckCircleFilled, InfoCircleFilled, ExclamationCircleFilled, CloseCircleFilled } from "../icons";
+import LoadingOutlined from "../icons/LoadingOutlined.vue";
 
 /** Vort MessageItem - 消息项组件（内部组件） */
 
@@ -16,6 +16,8 @@ interface Props {
     content: string;
     /** 自动关闭延时（毫秒），设为 0 时不自动关闭 */
     duration?: number;
+    /** 重新计时的时间戳。同 key 更新时递增，用于把停留时间重新拉满 */
+    resetAt?: number;
     /** 自定义类名 */
     class?: string;
 }
@@ -49,6 +51,30 @@ const IconComponent = computed(() => iconComponents[props.type]);
 
 // 定时器
 let timer: ReturnType<typeof setTimeout> | null = null;
+let closeTimer: ReturnType<typeof setTimeout> | null = null;
+
+const clearTimers = () => {
+    if (timer) {
+        clearTimeout(timer);
+        timer = null;
+    }
+    if (closeTimer) {
+        clearTimeout(closeTimer);
+        closeTimer = null;
+    }
+};
+
+const startTimer = () => {
+    if (timer) {
+        clearTimeout(timer);
+        timer = null;
+    }
+    if (props.duration > 0) {
+        timer = setTimeout(() => {
+            close();
+        }, props.duration);
+    }
+};
 
 // 关闭消息
 const close = () => {
@@ -56,10 +82,21 @@ const close = () => {
     closing.value = true;
 
     // 动画结束后通知父组件
-    setTimeout(() => {
+    closeTimer = setTimeout(() => {
         emit("close", props.id);
     }, 300);
 };
+
+// 重新计时。已进入退场动画的提示要拉回来：同一句话再次发生，用户必须看得到
+watch(
+    () => props.resetAt,
+    () => {
+        clearTimers();
+        closing.value = false;
+        visible.value = true;
+        startTimer();
+    }
+);
 
 // 组件挂载时
 onMounted(() => {
@@ -68,21 +105,11 @@ onMounted(() => {
         visible.value = true;
     });
 
-    // 设置自动关闭定时器
-    if (props.duration > 0) {
-        timer = setTimeout(() => {
-            close();
-        }, props.duration);
-    }
+    startTimer();
 });
 
 // 组件卸载时清除定时器
-onUnmounted(() => {
-    if (timer) {
-        clearTimeout(timer);
-        timer = null;
-    }
-});
+onUnmounted(clearTimers);
 
 // 暴露方法
 defineExpose({

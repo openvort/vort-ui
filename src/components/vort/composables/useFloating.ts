@@ -1,4 +1,5 @@
 import { ref, computed, onMounted, onUnmounted, nextTick, type Ref } from "vue";
+import { isEventInside } from "./eventPath";
 
 /**
  * 浮层定位方向
@@ -353,8 +354,7 @@ export function useFloating(options: UseFloatingOptions = {}) {
         if (!isOpen.value) return;
         if (trigger !== "click" && trigger !== "contextMenu") return;
 
-        const target = e.target as Node;
-        if (triggerRef.value?.contains(target) || floatingRef.value?.contains(target)) {
+        if (isEventInside(e, triggerRef.value, floatingRef.value)) {
             return;
         }
         hide();

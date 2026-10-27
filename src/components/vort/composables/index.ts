@@ -1,3 +1,4 @@
+export * from "./eventPath";
 export * from "./useFloating";
 export * from "./useOverlayStack";
 export * from "./useSSR";

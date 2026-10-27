@@ -1,6 +1,7 @@
 /**
  * DatePicker / RangePicker 组件类型定义
  */
+import type { FormVariant } from "../form/types";
 
 /** 日期选择器尺寸 */
 export type DatePickerSize = "large" | "middle" | "small";
@@ -85,6 +86,8 @@ export interface DatePickerProps {
     disabledDate?: (currentDate: Date) => boolean;
     /** 校验状态 */
     status?: DatePickerStatus;
+    /** 形态变体；不传时依次回退 Form、ConfigProvider */
+    variant?: FormVariant;
     /** 控制弹层显示 */
     open?: boolean;
     /** 菜单渲染父节点。默认渲染到 body 上，如果你遇到菜单滚动定位问题，试试修改为滚动的区域，并相对其定位 */
@@ -141,6 +144,8 @@ export interface RangePickerProps {
     disabledDate?: (currentDate: Date) => boolean;
     /** 校验状态 */
     status?: DatePickerStatus;
+    /** 形态变体；不传时依次回退 Form、ConfigProvider */
+    variant?: FormVariant;
     /** 控制弹层显示 */
     open?: boolean;
     /** 菜单渲染父节点。默认渲染到 body 上，如果你遇到菜单滚动定位问题，试试修改为滚动的区域，并相对其定位 */

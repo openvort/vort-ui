@@ -65,8 +65,9 @@ export interface VortDropdownContext {
 
 <script setup lang="ts">
 import { computed, ref, onBeforeUnmount, onMounted, watch, nextTick, provide } from "vue";
-import { getVortPopupContainer, useZIndex } from "@/components/vort/composables";
+import { getVortPopupContainer, useZIndex } from "../composables";
 import "./dropdown.css";
+import { NoFormItemStatus } from "../form/useFormItemStatus";
 
 defineOptions({ name: "VortDropdown" });
 
@@ -513,7 +514,10 @@ defineExpose({
             @animationend="handleAnimationEnd"
             @keydown="handleContentKeydown"
         >
-            <slot name="overlay" />
+            <!-- 弹层内容不继承外层 FormItem 的校验状态 -->
+            <NoFormItemStatus>
+                <slot name="overlay" />
+            </NoFormItemStatus>
 
             <div
                 v-if="showArrow"

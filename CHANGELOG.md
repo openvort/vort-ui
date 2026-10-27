@@ -4,6 +4,36 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.4.0] - 2026-10-27
+
+本版本起，Vort UI 由统一源码导出发布，组件库工程结构随之调整：组件源码仍在 `src/`，文档与 Demo 移至 `docs/`。
+
+### 升级须知
+- **zod 改为 peer 依赖，范围 `^3.25.0`**：1.3.0 内置 zod 4，现需由应用自行安装 zod 3。Form 的 `rules` 类型基于 zod 3 的 `ZodType`，使用 zod 4 schema 的项目升级前需调整校验代码，或暂时停留在 1.3.0
+- **Vue peer 依赖调整为 `^3.5.0`**（此前为 `^3.4.0`），`vue` 不再列在 dependencies
+- **移除未使用的运行依赖**：reka-ui、lucide-vue-next、@vueuse/core、clsx、tailwind-merge、dayjs、vue-router 不再随组件库安装；若项目代码直接使用了这些包，请在项目中自行声明
+- **ConfirmDialog 默认 z-index 由 1000 调整为 2000**，确保确认框位于普通对话框及其浮层之上
+- package.json 新增 `engines`（Node `^20.19.0 || >=22.12.0`），仅影响组件库本身的开发与构建
+
+### 新增
+- 新增 Result 结果组件，新增 HolderOutlined、RedoOutlined、UndoOutlined 图标，导出 `FloatingPlacement`、`FloatingTrigger` 类型
+- AutoComplete、DatePicker、RangePicker、TimePicker、Textarea、Form 新增 `variant`
+- AutoComplete 新增 `loading`、`loadingDelay`、`openOnFocus`
+- Form 新增 `keepValuesOnUnmount`，分页或分步表单可保留已卸载 FormItem 的字段值
+- Dialog 新增 `destroyOnClose`（默认 `true`）、`forceRender`、`dividers`（默认 `true`）、`mousePosition`；默认值与此前的渲染表现一致
+- Drawer 新增 `forceRender`、`bodyNoPadding`；`destroyOnClose` 默认改为 `true`，与此前关闭后移除内容的实际表现一致，需要保留内容时可设为 `false`
+- Popover 新增 `offset`；Scrollbar 新增 `verticalTrackOffset`；Table 新增 `sortState`；Textarea 新增 `countStrategy`
+- Notification 新增 `clickable` 与 `bodyClick` 事件；Message 新增 `resetAt`
+- Select 新增 `option` 插槽；ConfirmDialog 支持默认插槽
+- Image 新增 `loading`、`decoding`、`fetchpriority` 属性，直接作用于原生 img；不传时保持原有行为
+- Tag 的 `class` 类型放宽为 Vue 标准 class 写法
+- 文档站新增 ⌘K / Ctrl+K 全局搜索
+- 提供 IDE 补全用的 web-types
+
+### 修复
+- 修复 Image 在 `loading="lazy"` 时因加载中隐藏而始终不发起请求的问题
+- 修复 Image 加载失败后更换 `src` 仍停留在错误或 fallback 状态的问题（含初始空地址后异步赋值）
+
 ## [1.3.0] - 2026-04-24
 
 ### 新增

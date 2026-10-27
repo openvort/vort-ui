@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, useAttrs, watch, nextTick, onMounted } from "vue";
 import type { StyleValue } from "vue";
-import { CloseCircleFilled } from "@/components/vort/icons";
+import { CloseCircleFilled } from "../icons";
+import { useFormDisabled } from "../form/useFormDisabled";
+import { useFormItemStatus } from "../form/useFormItemStatus";
+import { useFormVariant } from "../form/useFormVariant";
+import type { FormVariant } from "../form/types";
 
 defineOptions({ name: "VortTextarea", inheritAttrs: false });
 
@@ -26,7 +30,9 @@ interface Props {
     status?: TextareaStatus;
     /** 是否禁用 */
     disabled?: boolean;
-    /** 是否有边框 */
+    /** 形态变体；不传时依次回退 bordered、Form、ConfigProvider */
+    variant?: FormVariant;
+    /** 是否有边框（兼容旧用法，false 等同 variant="borderless"，优先使用 variant） */
     bordered?: boolean;
     /** 输入框占位文本 */
     placeholder?: string;
@@ -36,6 +42,8 @@ interface Props {
     allowClear?: boolean;
     /** 最大输入长度 */
     maxlength?: number;
+    /** 自定义长度算法；提供后由组件内部拦截超限输入，不使用原生 maxlength。 */
+    countStrategy?: (value: string) => number;
     /** 是否展示字数 */
     showCount?: boolean;
     /** 固定行数 */
@@ -46,12 +54,18 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
     size: "middle",
-    disabled: false,
     bordered: true,
     allowClear: false,
     showCount: false,
     rows: 4
 });
+
+const mergedDisabled = useFormDisabled(() => props.disabled);
+const mergedStatus = useFormItemStatus(() => props.status);
+const mergedVariant = useFormVariant(
+    () => props.variant,
+    () => props.bordered
+);
 
 const emit = defineEmits<{
     "update:modelValue": [value: string];
@@ -131,17 +145,19 @@ onMounted(() => {
 });
 
 // 是否应该渲染清除按钮
-const shouldRenderClearButton = computed(() => props.allowClear && !props.disabled);
+const shouldRenderClearButton = computed(() => props.allowClear && !mergedDisabled.value);
 
 // 清除按钮是否可见（有内容时显示）
 const isClearButtonVisible = computed(() => shouldRenderClearButton.value && !!innerValue.value);
 
 // 是否显示底部区域（清除按钮或字数统计）
 const hasFooter = computed(() => props.allowClear || props.showCount);
+const nativeMaxlength = computed(() => (props.countStrategy ? undefined : props.maxlength));
+const valueLength = computed(() => props.countStrategy?.(innerValue.value) ?? innerValue.value.length);
 
 // 字数统计文本
 const countText = computed(() => {
-    const len = innerValue.value.length;
+    const len = valueLength.value;
     if (props.maxlength !== undefined) {
         return `${len} / ${props.maxlength}`;
     }
@@ -152,20 +168,18 @@ const countText = computed(() => {
 
 /** Wrapper 类名 */
 const wrapperClasses = computed(() => {
-    const classes = ["vort-textarea-wrapper", `vort-textarea-${props.size}`];
-    if (props.status) classes.push(`vort-textarea-${props.status}`);
-    if (props.disabled) classes.push("vort-textarea-disabled");
-    if (!props.bordered) classes.push("vort-textarea-borderless");
+    const classes = ["vort-textarea-wrapper", `vort-textarea-${props.size}`, `vort-textarea-${mergedVariant.value}`];
+    if (mergedStatus.value) classes.push(`vort-textarea-${mergedStatus.value}`);
+    if (mergedDisabled.value) classes.push("vort-textarea-disabled");
     if (props.class) classes.push(props.class);
     return classes;
 });
 
 /** 纯 Textarea 类名（无 wrapper 时使用） */
 const textareaOnlyClasses = computed(() => {
-    const classes = ["vort-textarea", `vort-textarea-${props.size}`];
-    if (props.status) classes.push(`vort-textarea-${props.status}`);
-    if (props.disabled) classes.push("vort-textarea-disabled");
-    if (!props.bordered) classes.push("vort-textarea-borderless");
+    const classes = ["vort-textarea", `vort-textarea-${props.size}`, `vort-textarea-${mergedVariant.value}`];
+    if (mergedStatus.value) classes.push(`vort-textarea-${mergedStatus.value}`);
+    if (mergedDisabled.value) classes.push("vort-textarea-disabled");
     if (props.class) classes.push(props.class);
     return classes;
 });
@@ -174,6 +188,10 @@ const textareaOnlyClasses = computed(() => {
 
 const handleInput = (event: Event) => {
     const target = event.target as HTMLTextAreaElement;
+    if (props.maxlength !== undefined && props.countStrategy && props.countStrategy(target.value) > props.maxlength) {
+        target.value = innerValue.value;
+        return;
+    }
     innerValue.value = target.value;
     emit("update:modelValue", target.value);
     emit("input", event);
@@ -209,7 +227,7 @@ const handleClear = () => {
 };
 
 const handleWrapperClick = () => {
-    if (!props.disabled) {
+    if (!mergedDisabled.value) {
         textareaRef.value?.focus();
     }
 };
@@ -231,9 +249,9 @@ defineExpose({
             ref="textareaRef"
             :value="innerValue"
             class="vort-textarea-inner"
-            :disabled="disabled"
+            :disabled="mergedDisabled"
             :placeholder="placeholder"
-            :maxlength="maxlength"
+            :maxlength="nativeMaxlength"
             :rows="autoSize ? undefined : rows"
             @input="handleInput"
             @change="handleChange"
@@ -271,9 +289,9 @@ defineExpose({
         :value="innerValue"
         :class="textareaOnlyClasses"
         :style="attrsStyle"
-        :disabled="disabled"
+        :disabled="mergedDisabled"
         :placeholder="placeholder"
-        :maxlength="maxlength"
+        :maxlength="nativeMaxlength"
         :rows="autoSize ? undefined : rows"
         @input="handleInput"
         @change="handleChange"
@@ -322,6 +340,8 @@ defineExpose({
     border-radius: var(--vort-radius, 6px);
     background: var(--_bg-color);
     color: var(--vort-text, rgba(0, 0, 0, 0.88));
+    /* 文本域不能继承管理端 body 的 line-height: 1，否则多行文字会显得拥挤 */
+    line-height: 1.5714;
     outline: none;
     resize: none;
     transition: var(--vort-transition-all, all 0.2s cubic-bezier(0.645, 0.045, 0.355, 1));
@@ -382,22 +402,120 @@ defineExpose({
     cursor: not-allowed;
 }
 
-.vort-textarea-disabled .vort-textarea-inner {
+/* 与 Input 同因：wrapper 的 color 到不了原生 textarea，且要压住浏览器自带的禁用灰 */
+.vort-textarea-disabled .vort-textarea-inner,
+textarea.vort-textarea-disabled {
+    color: var(--vort-text-quaternary, rgba(0, 0, 0, 0.25));
+    -webkit-text-fill-color: var(--vort-text-quaternary, rgba(0, 0, 0, 0.25));
     cursor: not-allowed;
 }
 
 /* ========================================
-   状态覆盖 - Borderless
+   形态变体 - Outlined（默认）
+   ======================================== */
+.vort-textarea-outlined {
+    border: 1px solid var(--_border-color);
+    background: var(--_bg-color);
+}
+
+/* ========================================
+   形态变体 - Filled
+   ======================================== */
+.vort-textarea-filled {
+    --_bg-color: rgba(0, 0, 0, 0.04);
+    border: 1px solid transparent;
+}
+
+.vort-textarea-filled:hover:not(.vort-textarea-disabled) {
+    --_bg-color: rgba(0, 0, 0, 0.06);
+    border-color: transparent;
+}
+
+.vort-textarea-filled:focus-within:not(.vort-textarea-disabled),
+.vort-textarea.vort-textarea-filled:focus:not(.vort-textarea-disabled) {
+    --_bg-color: #fff;
+    border-color: var(--_focus-color);
+    box-shadow: none;
+}
+
+/* Filled + Error/Warning：状态色浅底，不显示边框，聚焦时白底 + 状态色边框（对齐 antd） */
+.vort-textarea-filled.vort-textarea-error:not(.vort-textarea-disabled) {
+    --_bg-color: var(--vort-error-bg, #fff2f0);
+}
+
+.vort-textarea-filled.vort-textarea-warning:not(.vort-textarea-disabled) {
+    --_bg-color: var(--vort-warning-bg, #fffbe6);
+}
+
+.vort-textarea-filled.vort-textarea-error:hover:not(.vort-textarea-disabled) {
+    --_bg-color: var(--vort-error-bg-hover, #fff1f0);
+}
+
+.vort-textarea-filled.vort-textarea-warning:hover:not(.vort-textarea-disabled) {
+    --_bg-color: var(--vort-warning-bg-hover, #fff1b8);
+}
+
+.vort-textarea-filled.vort-textarea-error:focus-within:not(.vort-textarea-disabled),
+.vort-textarea.vort-textarea-filled.vort-textarea-error:focus:not(.vort-textarea-disabled),
+.vort-textarea-filled.vort-textarea-warning:focus-within:not(.vort-textarea-disabled),
+.vort-textarea.vort-textarea-filled.vort-textarea-warning:focus:not(.vort-textarea-disabled) {
+    --_bg-color: #fff;
+}
+
+/* ========================================
+   形态变体 - Borderless
    ======================================== */
 .vort-textarea-borderless {
     border-color: transparent;
     background: transparent;
 }
 
-.vort-textarea-borderless:hover:not(.vort-textarea-disabled),
+.vort-textarea-borderless:hover:not(.vort-textarea-disabled) {
+    border-color: transparent;
+}
+
+/* 聚焦时显示 1px 边框，颜色随状态；鼠标点击与键盘聚焦都显示 */
 .vort-textarea-borderless:focus-within:not(.vort-textarea-disabled),
 .vort-textarea.vort-textarea-borderless:focus:not(.vort-textarea-disabled) {
+    border-color: var(--_focus-color);
+    box-shadow: none;
+}
+
+/* Filled / Borderless 没有常显的状态边框，用状态色文字提示 */
+textarea.vort-textarea.vort-textarea-filled.vort-textarea-error:not(.vort-textarea-disabled),
+.vort-textarea-filled.vort-textarea-error:not(.vort-textarea-disabled) .vort-textarea-inner,
+textarea.vort-textarea.vort-textarea-borderless.vort-textarea-error:not(.vort-textarea-disabled),
+.vort-textarea-borderless.vort-textarea-error:not(.vort-textarea-disabled) .vort-textarea-inner {
+    color: var(--vort-error, #ff4d4f);
+}
+
+textarea.vort-textarea.vort-textarea-filled.vort-textarea-warning:not(.vort-textarea-disabled),
+.vort-textarea-filled.vort-textarea-warning:not(.vort-textarea-disabled) .vort-textarea-inner,
+textarea.vort-textarea.vort-textarea-borderless.vort-textarea-warning:not(.vort-textarea-disabled),
+.vort-textarea-borderless.vort-textarea-warning:not(.vort-textarea-disabled) .vort-textarea-inner {
+    color: var(--vort-warning, #faad14);
+}
+
+/* ========================================
+   形态变体 - Underlined
+   ======================================== */
+/* 四边保留 1px 透明边框、只给底边着色：切换形态时盒子尺寸不变，也不会从 border: none 的默认粗黑边过渡出来 */
+.vort-textarea-underlined {
+    border: 1px solid transparent;
+    border-bottom-color: var(--_border-color);
+    border-radius: 0;
+    background: transparent;
+}
+
+.vort-textarea-underlined:hover:not(.vort-textarea-disabled) {
     border-color: transparent;
+    border-bottom-color: var(--_focus-color);
+}
+
+.vort-textarea-underlined:focus-within:not(.vort-textarea-disabled),
+.vort-textarea.vort-textarea-underlined:focus:not(.vort-textarea-disabled) {
+    border-color: transparent;
+    border-bottom-color: var(--_focus-color);
     box-shadow: none;
 }
 
@@ -459,6 +577,8 @@ defineExpose({
     outline: none;
     resize: none;
     color: var(--vort-text, rgba(0, 0, 0, 0.88));
+    /* wrapper 模式下行高需要落到原生 textarea 上 */
+    line-height: 1.5714;
 }
 
 .vort-textarea-inner::placeholder {

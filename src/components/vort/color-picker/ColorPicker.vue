@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
-import { getVortPopupContainer, useFloating, useZIndex } from "@/components/vort/composables";
-import { Input } from "@/components/vort/input";
-import { Select } from "@/components/vort/select";
-import type { SelectOptionType } from "@/components/vort/select";
-import { Button } from "@/components/vort/button";
+import { getVortPopupContainer, useFloating, useZIndex } from "../composables";
+import { Input } from "../input";
+import { Select } from "../select";
+import type { SelectOptionType } from "../select";
+import { Button } from "../button";
+import { useFormDisabled } from "../form/useFormDisabled";
+import { resetFormItemStatus } from "../form/useFormItemStatus";
 
 defineOptions({ name: "VortColorPicker" });
 
@@ -56,7 +58,6 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
     defaultValue: "#00000000",
     format: "hex",
-    disabled: false,
     disabledAlpha: false,
     allowClear: false,
     arrow: true,
@@ -64,6 +65,11 @@ const props = withDefaults(defineProps<Props>(), {
     placement: "bottomLeft",
     showText: false
 });
+
+const mergedDisabled = useFormDisabled(() => props.disabled);
+
+// 面板内的输入框、格式选择不继承外层 FormItem 的校验状态
+resetFormItemStatus();
 
 const emit = defineEmits<{
     "update:modelValue": [value: string];
@@ -79,10 +85,10 @@ const brightness = ref(100); // 0-100 (HSB 的亮度)
 const alpha = ref(100); // 0-100
 
 // ==================== 浮层 ====================
-const { triggerRef, floatingRef, isOpen, position, triggerHandlers, floatingHandlers, hide } = useFloating({
+const { triggerRef, floatingRef, isOpen, position, triggerHandlers, floatingHandlers } = useFloating({
     placement: props.placement,
     trigger: (props.trigger ?? "click") as TriggerType,
-    disabled: props.disabled,
+    disabled: mergedDisabled.value,
     gap: props.arrow ? 10 : 4
 });
 
@@ -572,7 +578,7 @@ initColor(props.modelValue || props.defaultValue);
             v-bind="triggerHandlers"
             :class="[
                 'vort-color-picker-trigger',
-                disabled && 'vort-color-picker-trigger-disabled',
+                mergedDisabled && 'vort-color-picker-trigger-disabled',
                 displayText ? 'vort-color-picker-trigger-with-text' : triggerSizeClass
             ]"
         >
@@ -681,10 +687,11 @@ initColor(props.modelValue || props.defaultValue);
                                     :get-popup-container="getSelectPopupContainer"
                                     :bordered="false"
                                 />
-                                <!-- 颜色值输入 -->
+                                <!-- 颜色值输入（面板内部控件，不随外层 Form / ConfigProvider 的形态变体变化） -->
                                 <Input
                                     v-model="colorInputValue"
                                     size="small"
+                                    variant="outlined"
                                     class="vort-color-picker-value-input"
                                     @blur="handleColorInputComplete"
                                     @keydown.enter="handleColorInputComplete"
@@ -984,8 +991,6 @@ initColor(props.modelValue || props.defaultValue);
 
 .vort-color-picker-value-input {
     flex: 1;
-    font-family: monospace;
-    font-size: 12px;
 }
 
 .vort-color-picker-clear-btn {

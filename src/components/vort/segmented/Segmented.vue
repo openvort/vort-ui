@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, watch, useSlots, onMounted, onBeforeUnmount, nextTick } from "vue";
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from "vue";
+import { useFormDisabled } from "../form/useFormDisabled";
 
 defineOptions({ name: "VortSegmented" });
 
@@ -46,18 +47,17 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-    disabled: false,
     size: "middle",
     block: false,
     shape: "default"
 });
 
+const mergedDisabled = useFormDisabled(() => props.disabled);
+
 const emit = defineEmits<{
     "update:modelValue": [value: string | number];
     change: [value: string | number];
 }>();
-
-const slots = useSlots();
 
 // ==================== 内部状态 ====================
 
@@ -194,7 +194,7 @@ const setItemRef = (el: HTMLElement | null, index: number) => {
 // ==================== 事件处理 ====================
 
 const handleSelect = (option: SegmentedOption) => {
-    if (props.disabled || option.disabled) return;
+    if (mergedDisabled.value || option.disabled) return;
 
     innerValue.value = option.value;
     emit("update:modelValue", option.value);
@@ -251,7 +251,7 @@ const containerClasses = computed(() => {
     // 形状
     classes.push(props.shape === "round" ? "vort-segmented-round" : "vort-segmented-default");
     // 禁用
-    if (props.disabled) classes.push("vort-segmented-disabled");
+    if (mergedDisabled.value) classes.push("vort-segmented-disabled");
     // 自定义类名
     if (props.class) classes.push(props.class);
     return classes;
@@ -260,7 +260,7 @@ const containerClasses = computed(() => {
 // 选项样式（移除选中项的背景，由滑块提供）
 const getItemClasses = (option: SegmentedOption, _index: number) => {
     const isSelected = selectedValue.value === option.value;
-    const isDisabled = props.disabled || option.disabled;
+    const isDisabled = mergedDisabled.value || option.disabled;
 
     const classes = ["vort-segmented-item"];
     // 尺寸
@@ -294,7 +294,7 @@ const uniqueId = computed(() => props.name || `vort-segmented-${Math.random().to
 </script>
 
 <template>
-    <div ref="containerRef" :class="containerClasses" role="radiogroup" :aria-disabled="disabled">
+    <div ref="containerRef" :class="containerClasses" role="radiogroup" :aria-disabled="mergedDisabled">
         <!-- 滑块背景 -->
         <div
             :class="thumbClasses"
@@ -325,7 +325,7 @@ const uniqueId = computed(() => props.name || `vort-segmented-${Math.random().to
                 :name="uniqueId"
                 :value="option.value"
                 :checked="selectedValue === option.value"
-                :disabled="disabled || option.disabled"
+                :disabled="mergedDisabled || option.disabled"
                 class="vort-segmented-input"
             />
 
@@ -351,11 +351,19 @@ const uniqueId = computed(() => props.name || `vort-segmented-${Math.random().to
     position: relative;
     display: inline-flex;
     padding: 2px;
-    background: var(--vort-fill-quaternary, rgba(0, 0, 0, 0.02));
+    background: var(--vort-fill-tertiary, rgba(0, 0, 0, 0.04));
 }
 
 .vort-segmented-default {
     border-radius: var(--vort-border-radius, 6px);
+}
+
+.vort-segmented-default.vort-segmented-lg {
+    border-radius: var(--vort-border-radius-lg, 8px);
+}
+
+.vort-segmented-default.vort-segmented-sm {
+    border-radius: var(--vort-border-radius-sm, 4px);
 }
 
 .vort-segmented-round {
@@ -386,29 +394,37 @@ const uniqueId = computed(() => props.name || `vort-segmented-${Math.random().to
 }
 
 .vort-segmented-item-default {
+    border-radius: var(--vort-border-radius-sm, 4px);
+}
+
+.vort-segmented-item-default.vort-segmented-item-large {
     border-radius: var(--vort-border-radius, 6px);
+}
+
+.vort-segmented-item-default.vort-segmented-item-small {
+    border-radius: 2px;
 }
 
 .vort-segmented-item-round {
     border-radius: 9999px;
 }
 
-/* 尺寸 */
+/* 尺寸：选项高度 = 控件高度 - 上下内边距，整体与同尺寸输入框等高（40 / 32 / 24） */
 .vort-segmented-item-large {
     min-height: 36px;
-    padding: 6px 16px;
+    padding: 0 11px;
     font-size: 16px;
 }
 
 .vort-segmented-item-middle {
     min-height: 28px;
-    padding: 4px 12px;
+    padding: 0 11px;
     font-size: 14px;
 }
 
 .vort-segmented-item-small {
     min-height: 20px;
-    padding: 2px 8px;
+    padding: 0 7px;
     font-size: 12px;
 }
 
@@ -486,7 +502,15 @@ const uniqueId = computed(() => props.name || `vort-segmented-${Math.random().to
 }
 
 .vort-segmented-thumb-default {
+    border-radius: var(--vort-border-radius-sm, 4px);
+}
+
+.vort-segmented-lg .vort-segmented-thumb-default {
     border-radius: var(--vort-border-radius, 6px);
+}
+
+.vort-segmented-sm .vort-segmented-thumb-default {
+    border-radius: 2px;
 }
 
 .vort-segmented-thumb-round {

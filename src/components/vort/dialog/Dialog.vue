@@ -18,11 +18,13 @@ function ensureClickListener() {
 </script>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from "vue";
-import { CloseOutlined } from "@/components/vort/icons";
-import { getVortTeleportTo, useZIndexProviderValue, useOverlayStack } from "@/components/vort/composables";
-import { Button } from "@/components/vort/button";
+import { ref, computed, watch, onMounted, onUnmounted, nextTick, useId } from "vue";
+import { CloseOutlined } from "../icons";
+import { getVortTeleportTo, useZIndexProviderValue, useOverlayStack } from "../composables";
+import { Button } from "../button";
 import { useLocale } from "../locale";
+import type { DialogProps } from "./types";
+import { resetFormItemStatus } from "../form/useFormItemStatus";
 
 defineOptions({ name: "VortDialog" });
 
@@ -30,47 +32,11 @@ defineOptions({ name: "VortDialog" });
 
 type DialogWidth = "small" | "default" | "large" | number | string;
 
-interface Props {
-    /** 对话框是否可见（v-model） */
-    open?: boolean;
-    /** 标题 */
-    title?: string;
-    /** 对话框宽度 */
-    width?: DialogWidth;
-    /** 是否显示右上角关闭按钮 */
-    closable?: boolean;
-    /** 点击蒙层是否允许关闭 */
-    maskClosable?: boolean;
-    /** 是否支持键盘 ESC 关闭 */
-    keyboard?: boolean;
-    /** 是否显示遮罩 */
-    mask?: boolean;
-    /** 垂直居中展示 */
-    centered?: boolean;
-    /** 确定按钮文字 */
-    okText?: string;
-    /** 取消按钮文字 */
-    cancelText?: string;
-    /** 确定按钮 loading */
-    confirmLoading?: boolean;
-    /** 是否显示底部按钮区域 */
-    footer?: boolean;
-    /** z-index */
-    zIndex?: number;
-    /** 自定义类名 */
-    class?: string;
-    /** 对话框外层容器类名 */
-    wrapClass?: string;
-    /** body 区域是否无内边距 */
-    bodyNoPadding?: boolean;
-    /** 内容区域背景色（仅 body 区域），默认白色 */
-    contentBg?: string;
-    /** body 区域最大高度，超出后滚动 */
-    bodyMaxHeight?: string;
-}
-
-const props = withDefaults(defineProps<Props>(), {
+const props = withDefaults(defineProps<DialogProps>(), {
     open: false,
+    forceRender: false,
+    destroyOnClose: true,
+    mousePosition: null,
     title: "",
     width: "default",
     closable: true,
@@ -84,6 +50,7 @@ const props = withDefaults(defineProps<Props>(), {
     footer: true,
     zIndex: 1000,
     bodyNoPadding: false,
+    dividers: true,
     contentBg: "#fff",
     bodyMaxHeight: undefined
 });
@@ -99,6 +66,9 @@ useZIndexProviderValue(() => props.zIndex);
 
 const overlay = useOverlayStack();
 
+// 弹窗内容不继承外层 FormItem 的校验状态
+resetFormItemStatus();
+
 const emit = defineEmits<{
     "update:open": [value: boolean];
     ok: [];
@@ -110,14 +80,18 @@ const emit = defineEmits<{
 const visible = ref(false);
 const shouldRenderTeleport = ref(false); // 控制 Teleport 是否渲染，避免产生 <!--v-if--> 注释
 const animationState = ref<"" | "enter" | "leave">("");
+const animationGeneration = ref(0);
+const overlayRegistered = ref(false);
 const dialogRef = ref<HTMLDivElement | null>(null);
 const wrapRef = ref<HTMLDivElement | null>(null);
 const transformOriginStyle = ref("");
 const teleportTo = computed(() => getVortTeleportTo());
+const titleId = `vort-dialog-title-${useId()}`;
 
 // 计算 transform-origin
 const setTransformOrigin = () => {
-    if (!dialogRef.value || !mousePosition) {
+    const origin = props.mousePosition ?? mousePosition;
+    if (!dialogRef.value || !origin) {
         transformOriginStyle.value = "";
         return;
     }
@@ -126,8 +100,8 @@ const setTransformOrigin = () => {
     const rect = dialogNode.getBoundingClientRect();
 
     // 计算点击位置相对于对话框的偏移（都是视口坐标系）
-    const left = mousePosition.x - rect.left;
-    const top = mousePosition.y - rect.top;
+    const left = origin.x - rect.left;
+    const top = origin.y - rect.top;
 
     transformOriginStyle.value = `${left}px ${top}px`;
 };
@@ -152,6 +126,7 @@ const close = () => {
 
 // 确定按钮点击
 const handleOk = () => {
+    if (props.confirmLoading || props.okButtonProps?.disabled || props.okButtonProps?.loading) return;
     emit("ok");
 };
 
@@ -176,14 +151,15 @@ const handleWrapClick = (e: MouseEvent) => {
 };
 
 // 动画结束回调
-const handleAnimationEnd = () => {
-    if (animationState.value === "leave") {
+const handleAnimationEnd = (event: AnimationEvent) => {
+    // 快速关开时，旧的 leave 动画可能晚于新的 enter 事件结束；按动画名称过滤，避免旧事件清掉新状态。
+    if (event.animationName.startsWith("vortDialogZoomOut") && animationState.value === "leave" && !props.open) {
         visible.value = false;
         animationState.value = "";
         document.body.style.overflow = "";
-        shouldRenderTeleport.value = false; // 动画结束后移除 Teleport
+        shouldRenderTeleport.value = !props.destroyOnClose;
         emit("afterClose");
-    } else if (animationState.value === "enter") {
+    } else if (event.animationName.startsWith("vortDialogZoomIn") && animationState.value === "enter") {
         animationState.value = "";
     }
 };
@@ -193,22 +169,31 @@ watch(
     () => props.open,
     async (newVal, oldVal) => {
         if (newVal) {
+            const generation = ++animationGeneration.value;
             shouldRenderTeleport.value = true;
             visible.value = true;
             document.body.style.overflow = "hidden";
 
-            overlay.push(() => {
-                if (props.keyboard) close();
-            });
+            if (!overlayRegistered.value) {
+                overlay.push(() => {
+                    if (props.keyboard) close();
+                });
+                overlayRegistered.value = true;
+            }
 
             await nextTick();
 
             requestAnimationFrame(() => {
+                if (generation !== animationGeneration.value || !props.open) return;
                 setTransformOrigin();
                 animationState.value = "enter";
             });
         } else if (oldVal && !newVal) {
-            overlay.pop();
+            animationGeneration.value++;
+            if (overlayRegistered.value) {
+                overlay.pop();
+                overlayRegistered.value = false;
+            }
             animationState.value = "leave";
         }
     },
@@ -220,14 +205,20 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-    overlay.pop();
+    if (overlayRegistered.value) overlay.pop();
     document.body.style.overflow = "";
 });
 </script>
 
 <template>
-    <Teleport v-if="shouldRenderTeleport" :to="teleportTo">
-        <div v-if="visible" class="vort-dialog-root" :class="wrapClass" :style="{ zIndex }">
+    <Teleport v-if="shouldRenderTeleport || forceRender" :to="teleportTo">
+        <div
+            v-if="visible || !destroyOnClose || forceRender"
+            v-show="open || (visible && !forceRender)"
+            class="vort-dialog-root"
+            :class="wrapClass"
+            :style="{ zIndex }"
+        >
             <!-- 遮罩层 -->
             <Transition name="vort-mask">
                 <div v-if="mask" v-show="open" class="vort-dialog-mask" @click="handleMaskClick" />
@@ -245,6 +236,7 @@ onUnmounted(() => {
                     :data-state="animationState"
                     role="dialog"
                     aria-modal="true"
+                    :aria-labelledby="title || $slots.title ? titleId : undefined"
                     @animationend="handleAnimationEnd"
                 >
                     <div class="vort-dialog-content">
@@ -254,7 +246,7 @@ onUnmounted(() => {
                         </Button>
 
                         <!-- 头部 -->
-                        <div v-if="title || $slots.title" class="vort-dialog-header">
+                        <div v-if="title || $slots.title" :id="titleId" class="vort-dialog-header" :class="{ 'vort-dialog-header-no-border': !dividers }">
                             <slot name="title">
                                 <span class="vort-dialog-title">{{ title }}</span>
                             </slot>
@@ -270,10 +262,12 @@ onUnmounted(() => {
                         </div>
 
                         <!-- 底部按钮区 -->
-                        <div v-if="footer" class="vort-dialog-footer">
+                        <div v-if="footer" class="vort-dialog-footer" :class="{ 'vort-dialog-footer-no-border': !dividers }">
                             <slot name="footer">
                                 <Button @click="handleCancel">{{ cancelTextValue }}</Button>
-                                <Button type="primary" :loading="confirmLoading" @click="handleOk">{{ okTextValue }}</Button>
+                                <Button type="primary" v-bind="okButtonProps" :loading="confirmLoading || okButtonProps?.loading" @click="handleOk">
+                                    {{ okTextValue }}
+                                </Button>
                             </slot>
                         </div>
                     </div>
@@ -429,6 +423,18 @@ onUnmounted(() => {
     border-bottom: 1px solid rgba(5, 5, 5, 0.06);
 }
 
+/*
+ * 无分隔线时三段是一片连续的白，间距得按一个数走，否则连成一片才看得出原本各自为政：
+ * header 与 footer 交出自己那份竖直内边距，标题到内容、内容到按钮都由 body 的 24px 决定；
+ * footer 横向也从 16px 对齐到 24px——有线时它是独立的一条带子看不出来，线一去掉「确认」就
+ * 比内容右缘往外多出 8px。竖直内边距仍是 header 那套 16px：标题顶部要和绝对定位在 16px 的
+ * 关闭按钮对齐，动不了，底部跟着它对称。
+ */
+.vort-dialog-header-no-border {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
 .vort-dialog-title {
     font-size: 16px;
     font-weight: 600;
@@ -457,6 +463,11 @@ onUnmounted(() => {
     gap: 8px;
     padding: 12px 16px;
     border-top: 1px solid rgba(5, 5, 5, 0.06);
+}
+
+.vort-dialog-footer-no-border {
+    border-top: none;
+    padding: 0 24px 16px;
 }
 
 /* 响应式：小屏幕时对话框宽度 100% */
